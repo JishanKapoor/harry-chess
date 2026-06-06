@@ -1,778 +1,1418 @@
 import os
-from flask import Flask
-from flask_socketio import SocketIO, join_room, emit
-from flask import request
+import random
+import secrets
+from flask import Flask, render_template_string, request
+from flask_socketio import SocketIO, join_room, leave_room, emit
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = 'lumos_maxima_secret'
-socketio = SocketIO(app, cors_allowed_origins="*")
+app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "lumos_maxima_secret")
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode="threading")
 
-client_rooms = {}
-room_counts = {}
+START_FEN = "rn1qkbnr/ppp1pppp/8/3p4/4P3/5N2/PPPP1PPP/RNBQKB1R w KQkq - 0 2"
 
-def keep_proper_logs(room_id, action):
-    print(f"[ROOM: {room_id}] {action}")
+SPELLS = [
+    {"id": "avada", "name": "Avada Kedavra", "rarity": "Legendary", "icon": "⚡", "action": "click", "desc": "Click an enemy piece to destroy it."},
+    {"id": "time", "name": "Time-Turner", "rarity": "Legendary", "icon": "⏳", "action": "instant", "desc": "Rewind the board to the previous round."},
+    {"id": "imperio", "name": "Imperio", "rarity": "Rare", "icon": "👁️", "action": "drag", "desc": "Drag an enemy piece to make a legal move for them."},
+    {"id": "sectum", "name": "Sectumsempra", "rarity": "Rare", "icon": "🩸", "action": "click", "desc": "Click an enemy piece to demote it to a Pawn."},
+    {"id": "fiendfyre", "name": "Fiendfyre", "rarity": "Rare", "icon": "🔥", "action": "click", "desc": "Click a square to destroy it and its surrounding 8 squares."},
+    {"id": "accio", "name": "Accio", "rarity": "Common", "icon": "🧲", "action": "drag", "desc": "Drag one of your pieces up to 2 squares in any direction."},
+    {"id": "leviosa", "name": "Wingardium Leviosa", "rarity": "Common", "icon": "🪶", "action": "drag", "desc": "Drag one of your pieces to any adjacent empty square."},
+    {"id": "alohomora", "name": "Alohomora", "rarity": "Common", "icon": "🗝️", "action": "drag", "desc": "Drag one of your pieces to any empty square on your half."},
+    {"id": "expelliarmus", "name": "Expelliarmus", "rarity": "Common", "icon": "🪄", "action": "instant", "desc": "You keep the move and get another turn."},
+    {"id": "protego", "name": "Protego", "rarity": "Common", "icon": "🛡️", "action": "click", "desc": "Click one of your Pawns to promote it to a Knight."},
+]
 
-@app.route('/')
+ROOMS = {}   # room_id -> room state
+SID_ROOM = {}  # request.sid -> room_id
+
+
+def opponent(color):
+    return "b" if color == "w" else "w"
+
+
+def new_hand():
+    legendary = [s for s in SPELLS if s["rarity"] == "Legendary"]
+    rare = [s for s in SPELLS if s["rarity"] == "Rare"]
+    common = [s for s in SPELLS if s["rarity"] == "Common"]
+
+    hand = random.sample(legendary, 1) + random.sample(rare, 2) + random.sample(common, 3)
+    random.shuffle(hand)
+    return hand
+
+
+def get_room(room_id):
+    if room_id not in ROOMS:
+        ROOMS[room_id] = {
+            "fen": START_FEN,
+            "turn": "w",
+            "players": {"w": None, "b": None},
+            "sid_color": {},
+            "hands": {},
+            "used": {"w": set(), "b": set()},
+            "connected": 0,
+            "started": False,
+        }
+    return ROOMS[room_id]
+
+
+def snapshot(room_id):
+    room = ROOMS[room_id]
+    return {
+        "room": room_id,
+        "fen": room["fen"],
+        "turn": room["turn"],
+        "connected": room["connected"],
+        "white_connected": room["players"]["w"] is not None,
+        "black_connected": room["players"]["b"] is not None,
+        "started": room["players"]["w"] is not None and room["players"]["b"] is not None,
+    }
+
+
+@app.route("/")
 def index():
-    return HTML_PAYLOAD
+    return render_template_string(HTML_PAYLOAD)
 
-@socketio.on('join_room')
-def handle_join(room_id):
+
+@socketio.on("join_room")
+def handle_join(data):
+    room_id = data["room"] if isinstance(data, dict) else str(data)
+    room = get_room(room_id)
+
+    if room["players"]["w"] is None:
+        color = "w"
+    elif room["players"]["b"] is None:
+        color = "b"
+    else:
+        color = "s"  # spectator
+
     join_room(room_id)
-    client_rooms[request.sid] = room_id
-    
-    if room_id not in room_counts:
-        room_counts[room_id] = 0
-    room_counts[room_id] += 1
-    
-    color = 'w' if room_counts[room_id] == 1 else 'b'
-    emit('role_assigned', color)
-    
-    keep_proper_logs(room_id, f"User connected. Assigned role: {'White' if color == 'w' else 'Black'}")
-    
-    if room_counts[room_id] >= 2:
-        emit('user_joined', room=room_id)
+    SID_ROOM[request.sid] = room_id
 
-@socketio.on('standard_move')
-def handle_standard_move(move_data):
-    room_id = client_rooms.get(request.sid)
-    keep_proper_logs(room_id, f"Standard move: {move_data['from']} to {move_data['to']}")
-    emit('standard_move', move_data, room=room_id, include_self=False)
+    if color in ("w", "b"):
+        room["players"][color] = request.sid
+        room["sid_color"][request.sid] = color
+        room["hands"][request.sid] = new_hand()
+        room["connected"] = sum(1 for x in room["players"].values() if x is not None)
+    else:
+        room["connected"] = sum(1 for x in room["players"].values() if x is not None)
 
-@socketio.on('magic_sync')
-def handle_magic_sync(fen_state):
-    room_id = client_rooms.get(request.sid)
-    keep_proper_logs(room_id, f"Magical Board Alteration synced.")
-    emit('magic_sync', fen_state, room=room_id, include_self=False)
+    emit(
+        "role_assigned",
+        {
+            "color": color,
+            "hand": room["hands"].get(request.sid, []),
+            "snapshot": snapshot(room_id),
+        },
+        to=request.sid,
+    )
 
-@socketio.on('spell_cast')
-def handle_spell_cast(spell_data):
-    room_id = client_rooms.get(request.sid)
-    keep_proper_logs(room_id, f"Spell Cast: {spell_data['name']}")
-    emit('spell_cast', spell_data, room=room_id, include_self=False)
+    emit("room_state", snapshot(room_id), room=room_id)
+    if room["players"]["w"] is not None and room["players"]["b"] is not None:
+        room["started"] = True
+        emit("game_ready", snapshot(room_id), room=room_id)
 
-@socketio.on('disconnect')
+
+@socketio.on("standard_move")
+def handle_standard_move(data):
+    room_id = SID_ROOM.get(request.sid)
+    if not room_id:
+        return
+
+    room = ROOMS.get(room_id)
+    if not room:
+        return
+
+    color = room["sid_color"].get(request.sid)
+    if color not in ("w", "b"):
+        return
+
+    if room["turn"] != color:
+        emit(
+            "action_denied",
+            {"reason": "It is not your turn.", "snapshot": snapshot(room_id)},
+            to=request.sid,
+        )
+        return
+
+    room["fen"] = data["fen"]
+    room["turn"] = opponent(color)
+
+    emit(
+        "standard_move",
+        {
+            "from": data.get("from"),
+            "to": data.get("to"),
+            "san": data.get("san"),
+            "color": color,
+            "fen": room["fen"],
+            "turn": room["turn"],
+        },
+        room=room_id,
+        include_self=False,
+    )
+
+
+@socketio.on("spell_effect")
+def handle_spell_effect(data):
+    room_id = SID_ROOM.get(request.sid)
+    if not room_id:
+        return
+
+    room = ROOMS.get(room_id)
+    if not room:
+        return
+
+    color = room["sid_color"].get(request.sid)
+    if color not in ("w", "b"):
+        return
+
+    spell_id = data.get("spell_id")
+    consume_turn = bool(data.get("consume_turn", True))
+    if spell_id in room["used"][color]:
+        emit(
+            "action_denied",
+            {"reason": "That spell was already used.", "snapshot": snapshot(room_id)},
+            to=request.sid,
+        )
+        return
+
+    if room["turn"] != color:
+        emit(
+            "action_denied",
+            {"reason": "It is not your turn.", "snapshot": snapshot(room_id)},
+            to=request.sid,
+        )
+        return
+
+    room["used"][color].add(spell_id)
+    room["fen"] = data.get("fen", room["fen"])
+    if consume_turn:
+        room["turn"] = opponent(color)
+
+    emit(
+        "spell_effect",
+        {
+            "spell_id": spell_id,
+            "name": data.get("name", spell_id),
+            "fen": room["fen"],
+            "consume_turn": consume_turn,
+            "color": color,
+            "turn": room["turn"],
+        },
+        room=room_id,
+        include_self=False,
+    )
+
+
+@socketio.on("disconnect")
 def handle_disconnect():
-    room_id = client_rooms.get(request.sid)
-    if room_id:
-        room_counts[room_id] -= 1
-        keep_proper_logs(room_id, 'User disconnected.')
-        del client_rooms[request.sid]
+    room_id = SID_ROOM.pop(request.sid, None)
+    if not room_id:
+        return
 
-# ========================================================
-# TRUE CHESS.COM INSPIRED UI WITH CAPTURED PIECES & SPELLS
-# ========================================================
-HTML_PAYLOAD = """
+    room = ROOMS.get(room_id)
+    if not room:
+        return
+
+    color = room["sid_color"].pop(request.sid, None)
+    room["hands"].pop(request.sid, None)
+
+    if color in ("w", "b") and room["players"].get(color) == request.sid:
+        room["players"][color] = None
+
+    room["connected"] = sum(1 for x in room["players"].values() if x is not None)
+
+    try:
+        leave_room(room_id)
+    except Exception:
+        pass
+
+    emit("room_state", snapshot(room_id), room=room_id)
+
+    if room["connected"] == 0:
+        ROOMS.pop(room_id, None)
+
+
+HTML_PAYLOAD = r"""
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Wizard's Chess</title>
-    
+
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <link rel="stylesheet" href="https://unpkg.com/@chrisoakman/chessboardjs@1.0.0/dist/chessboard-1.0.0.min.css">
-    
-    <style>
-        :root {
-            --bg-main: #312e2b;
-            --bg-sidebar: #262421;
-            --bg-panel: #21201d;
-            --bg-hover: #3c3a38;
-            --text-main: #fff;
-            --text-muted: #989795;
-            --accent-green: #81b64c;
-            --accent-green-hover: #a3d160;
-            --border-color: #403d39;
-            --gold: #f1b24a;
-            --purple: #a855f7;
-            --silver: #a7a6a2;
-            --magic-glow: rgba(168, 85, 247, 0.6);
-        }
-
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-            background-color: var(--bg-main);
-            color: var(--text-main);
-            margin: 0;
-            padding: 0;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            min-height: 100vh;
-        }
-
-        #header-bar {
-            width: 100%;
-            background: #21201d;
-            padding: 10px 20px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            box-sizing: border-box;
-            border-bottom: 5px solid #1a1917;
-        }
-        
-        .header-logo {
-            font-weight: 800;
-            font-size: 1.3rem;
-            color: #fff;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-
-        .info-btn {
-            background: #444; color: #fff; border-radius: 50%; width: 32px; height: 32px;
-            display: flex; align-items: center; justify-content: center; font-weight: bold;
-            cursor: pointer; border: none; font-size: 1.1rem; transition: 0.2s;
-        }
-        .info-btn:hover { background: #666; }
-
-        .main-container {
-            display: flex;
-            justify-content: center;
-            align-items: flex-start;
-            gap: 20px;
-            margin-top: 20px;
-            margin-bottom: 40px;
-            width: 100%;
-            max-width: 1100px;
-            flex-wrap: wrap;
-        }
-
-        .board-wrapper {
-            display: flex;
-            flex-direction: column;
-            width: 550px;
-        }
-
-        /* Player Tags, Timers & Captured Pieces */
-        .player-tag {
-            display: flex; flex-direction: column; justify-content: center;
-            padding: 10px 0; min-height: 50px;
-        }
-        .player-info {
-            display: flex; align-items: center; justify-content: space-between; font-weight: bold; font-size: 1rem;
-        }
-        
-        .user-block { display: flex; align-items: center; gap: 10px; }
-        .avatar { width: 32px; height: 32px; background: #555; border-radius: 3px; display: flex; align-items: center; justify-content: center; font-size: 0.8rem; }
-        
-        /* The Clocks */
-        .clock {
-            background: rgba(0,0,0,0.5); color: #fff; padding: 6px 12px; border-radius: 4px;
-            font-family: monospace; font-size: 1.2rem; font-weight: bold; border: 1px solid var(--border-color);
-        }
-        .clock.active { background: #fff; color: #000; border-color: #fff;}
-
-        .captured-area { display: flex; align-items: center; height: 25px; margin-top: 4px; padding-left: 42px; }
-        .captured-piece { width: 22px; height: 22px; background-size: cover; margin-right: -8px; }
-        .material-adv { margin-left: 15px; font-size: 0.85rem; font-weight: bold; color: var(--text-muted); }
-
-        /* The Board */
-        .board-core {
-            border-radius: 4px; box-shadow: 0 4px 15px rgba(0,0,0,0.4); transition: 0.3s;
-            border: 2px solid transparent;
-        }
-        .board-core.magic-active {
-            box-shadow: 0 0 40px var(--magic-glow); border: 2px solid var(--purple); cursor: crosshair;
-        }
-        #board { width: 100%; }
-
-        /* Spell Instruction Bar */
-        #spell-instruction {
-            background: var(--purple); color: #fff; font-weight: bold; padding: 10px;
-            text-align: center; border-radius: 4px; margin-top: 10px; display: none;
-            box-shadow: 0 4px 10px rgba(0,0,0,0.5);
-        }
-
-        /* Deck & Spells */
-        .deck-container {
-            margin-top: 15px;
-            background: var(--bg-sidebar);
-            padding: 15px;
-            border-radius: 6px;
-        }
-        .deck-title {
-            font-size: 0.85rem; text-transform: uppercase; color: var(--text-muted); font-weight: 800; margin-bottom: 10px;
-        }
-        .spells-row {
-            display: flex; gap: 10px; overflow-x: auto; padding-bottom: 5px;
-        }
-        
-        .spell-card {
-            min-width: 90px; width: 90px; height: 120px;
-            background: var(--bg-main); border: 2px solid var(--border-color);
-            border-radius: 6px; display: flex; flex-direction: column; align-items: center;
-            justify-content: flex-start; text-align: center; cursor: pointer; transition: 0.15s;
-            position: relative; padding: 8px 4px; box-sizing: border-box;
-        }
-        .spell-card:hover { transform: translateY(-4px); background: var(--bg-hover); border-color: #777;}
-        .spell-card.used { opacity: 0.2; pointer-events: none; filter: grayscale(100%); }
-        
-        .spell-icon { font-size: 1.8rem; margin-bottom: 8px; margin-top: 5px; text-shadow: 0 2px 4px rgba(0,0,0,0.5); }
-        .spell-name { font-size: 0.75rem; font-weight: bold; line-height: 1.1; color: #fff; }
-        
-        .spell-card.Legendary { border-bottom: 4px solid var(--gold); }
-        .spell-card.Rare { border-bottom: 4px solid var(--purple); }
-        .spell-card.Common { border-bottom: 4px solid var(--silver); }
-
-        /* Right Sidebar (Moves & Chat) */
-        .sidebar {
-            width: 350px;
-            background: var(--bg-sidebar);
-            border-radius: 8px;
-            display: flex;
-            flex-direction: column;
-            overflow: hidden;
-            height: 620px;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.4);
-        }
-
-        .sidebar-tabs {
-            display: flex; background: var(--bg-panel); border-bottom: 1px solid var(--border-color);
-        }
-        .sidebar-tab {
-            flex: 1; text-align: center; padding: 12px; font-weight: bold; color: var(--text-main);
-            border-bottom: 2px solid var(--accent-green);
-        }
-
-        .sidebar-content {
-            flex: 1; overflow-y: auto; display: flex; flex-direction: column;
-        }
-
-        /* Move List Table */
-        .move-history {
-            display: grid; grid-template-columns: 40px 1fr 1fr; font-size: 0.95rem; font-family: monospace;
-        }
-        .move-row { display: contents; }
-        .move-row > div { padding: 8px 10px; border-bottom: 1px solid var(--border-color); }
-        .move-num { background: var(--bg-panel); color: var(--text-muted); text-align: right;}
-        .move-ply { color: #fff; font-weight: bold; }
-        .move-ply.spell-move { color: var(--purple); }
-
-        /* Lobby / Share Link Box */
-        .lobby-box {
-            padding: 20px; text-align: center; background: var(--bg-panel); border-top: 1px solid var(--border-color);
-        }
-        .lobby-box h3 { margin: 0 0 10px 0; font-size: 1rem; color: #fff;}
-        .lobby-box input {
-            width: 90%; padding: 8px; background: #111; color: #fff; border: 1px solid #444; border-radius: 4px; margin-bottom: 10px; font-family: monospace;
-        }
-        .btn-green {
-            background-color: var(--accent-green); color: white; border: none; width: 95%;
-            padding: 12px; font-weight: bold; border-radius: 4px; cursor: pointer;
-            text-transform: uppercase; font-size: 0.95rem; transition: 0.2s;
-        }
-        .btn-green:hover { background-color: var(--accent-green-hover); }
-
-        /* Modals & Overlays */
-        .modal-overlay {
-            display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0,0,0,0.85); z-index: 2000; justify-content: center; align-items: center;
-        }
-        .modal-content {
-            background: var(--bg-panel); padding: 30px; border-radius: 8px; width: 90%; max-width: 650px;
-            max-height: 85vh; overflow-y: auto; border: 1px solid var(--border-color); color: var(--text-main);
-        }
-        .modal-content h2 { color: #fff; margin-top: 0; border-bottom: 1px solid var(--border-color); padding-bottom: 10px;}
-        
-        .grimoire-list { display: flex; flex-direction: column; gap: 10px; margin-top: 15px; }
-        .grimoire-item { display: flex; align-items: center; gap: 15px; background: var(--bg-main); padding: 10px; border-radius: 4px; }
-        .grimoire-icon { font-size: 1.5rem; width: 40px; text-align: center;}
-        .grimoire-text h4 { margin: 0 0 4px 0; color: #fff;}
-        .grimoire-text p { margin: 0; font-size: 0.85rem; color: #ccc;}
-
-        #notification {
-            position: fixed; top: 40%; left: 50%; transform: translate(-50%, -50%);
-            background: rgba(0,0,0,0.9); color: #fff; padding: 15px 30px;
-            border-radius: 8px; border: 2px solid var(--purple); font-size: 1.2rem;
-            font-weight: bold; display: none; z-index: 1000; text-align: center;
-            box-shadow: 0 0 20px var(--magic-glow);
-        }
-    </style>
-</head>
-<body>
-
-    <div id="header-bar">
-        <div class="header-logo">♞ Wizard's Chess</div>
-        <button class="info-btn" onclick="$('#rules-modal').css('display', 'flex')">i</button>
-    </div>
-
-    <div id="notification"></div>
-
-    <div class="main-container">
-        <!-- Center Board Column -->
-        <div class="board-wrapper">
-            
-            <!-- Opponent Tag -->
-            <div class="player-tag">
-                <div class="player-info">
-                    <div class="user-block">
-                        <div class="avatar">P2</div>
-                        <span id="opp-name">Opponent (Connecting...)</span>
-                    </div>
-                    <div class="clock" id="clock-opp">10:00</div>
-                </div>
-                <div class="captured-area" id="opp-captured"></div>
-            </div>
-
-            <!-- Board -->
-            <div class="board-core" id="board-wrap">
-                <div id="board"></div>
-            </div>
-            
-            <div id="spell-instruction"></div>
-
-            <!-- My Tag -->
-            <div class="player-tag">
-                <div class="captured-area" id="my-captured" style="margin-top: 0; margin-bottom: 4px;"></div>
-                <div class="player-info">
-                    <div class="user-block">
-                        <div class="avatar" style="background: var(--accent-green); color: #000;">P1</div>
-                        <span id="my-name">You</span>
-                    </div>
-                    <div class="clock active" id="clock-my">10:00</div>
-                </div>
-            </div>
-
-            <!-- My Spell Deck -->
-            <div class="deck-container">
-                <div class="deck-title">Your Hand</div>
-                <div class="spells-row" id="spells-view"></div>
-            </div>
-        </div>
-
-        <!-- Right Sidebar -->
-        <div class="sidebar">
-            <div class="sidebar-tabs">
-                <div class="sidebar-tab">Match Telemetry</div>
-            </div>
-            
-            <div class="sidebar-content">
-                <div class="move-history" id="move-history">
-                    <!-- Moves will be appended here -->
-                </div>
-            </div>
-            
-            <div class="lobby-box" id="lobby-box">
-                <h3>Play a Friend</h3>
-                <input type="text" id="shareLink" readonly>
-                <button class="btn-green" onclick="copyLink()">Copy Link</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- INSTRUCTION MANUAL MODAL -->
-    <div class="modal-overlay" id="rules-modal">
-        <div class="modal-content">
-            <h2>How to Play Wizard's Chess</h2>
-            <p><strong>The Deck:</strong> Out of 10 total spells, you are randomly dealt exactly 6 (1 Legendary, 2 Rares, 3 Commons).</p>
-            <p><strong>Fully Automated Magic:</strong> Unlike tabletop simulators, this engine enforces magic automatically. Click a spell in your hand to activate it. The board will glow, and an instruction bar will tell you what to click or drag. Once resolved, your turn automatically ends.</p>
-            <p style="color: var(--accent-green);"><strong>Note:</strong> Spells cannot be used to directly capture or target a King.</p>
-            
-            <h3 style="margin-top: 25px; border-bottom: 1px solid var(--border-color); padding-bottom: 10px;">The Grimoire (All 10 Automated Spells)</h3>
-            <div class="grimoire-list">
-                <!-- Legendary -->
-                <div class="grimoire-item"><div class="grimoire-icon">⚡</div><div class="grimoire-text"><h4 style="color:var(--gold);">Avada Kedavra (Legendary)</h4><p>Click an enemy piece to instantly destroy it.</p></div></div>
-                <div class="grimoire-item"><div class="grimoire-icon">⏳</div><div class="grimoire-text"><h4 style="color:var(--gold);">Time-Turner (Legendary)</h4><p>Instantly rewinds the board to the previous round.</p></div></div>
-                <!-- Rare -->
-                <div class="grimoire-item"><div class="grimoire-icon">👁️</div><div class="grimoire-text"><h4 style="color:var(--purple);">Imperio (Rare)</h4><p>Drag and drop an enemy piece to make a legal move for them.</p></div></div>
-                <div class="grimoire-item"><div class="grimoire-icon">🩸</div><div class="grimoire-text"><h4 style="color:var(--purple);">Sectumsempra (Rare)</h4><p>Click an enemy piece. It is instantly demoted into a Pawn.</p></div></div>
-                <div class="grimoire-item"><div class="grimoire-icon">🔥</div><div class="grimoire-text"><h4 style="color:var(--purple);">Fiendfyre (Rare)</h4><p>Click any square. Destroys the piece on it and all 8 surrounding pieces.</p></div></div>
-                <!-- Common -->
-                <div class="grimoire-item"><div class="grimoire-icon">🧲</div><div class="grimoire-text"><h4 style="color:var(--silver);">Accio (Common)</h4><p>Drag one of your pieces up to 2 squares in any direction (ignores blockers).</p></div></div>
-                <div class="grimoire-item"><div class="grimoire-icon">🪶</div><div class="grimoire-text"><h4 style="color:var(--silver);">Wingardium Leviosa (Common)</h4><p>Drag one of your pieces to any adjacent empty square.</p></div></div>
-                <div class="grimoire-item"><div class="grimoire-icon">🗝️</div><div class="grimoire-text"><h4 style="color:var(--silver);">Alohomora (Common)</h4><p>Drag one of your pieces to any empty square on your half of the board.</p></div></div>
-                <div class="grimoire-item"><div class="grimoire-icon">🪄</div><div class="grimoire-text"><h4 style="color:var(--silver);">Expelliarmus (Common)</h4><p>Instantly forces the opponent to skip their next turn. You move twice.</p></div></div>
-                <div class="grimoire-item"><div class="grimoire-icon">🛡️</div><div class="grimoire-text"><h4 style="color:var(--silver);">Protego (Common)</h4><p>Click one of your Pawns to instantly promote it to a Knight.</p></div></div>
-            </div>
-
-            <button class="btn-green" style="margin-top: 20px; width: 100%;" onclick="$('#rules-modal').hide()">Close Manual</button>
-        </div>
-    </div>
-
-    <!-- Scripts -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.js"></script>
     <script src="https://unpkg.com/@chrisoakman/chessboardjs@1.0.0/dist/chessboard-1.0.0.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
 
+    <style>
+        :root{
+            --bg:#1f1f1f;
+            --panel:#262522;
+            --panel-2:#2d2b28;
+            --panel-3:#31302d;
+            --text:#f5f5f5;
+            --muted:#a3a3a3;
+            --accent:#81b64c;
+            --accent-2:#9dd85a;
+            --border:#3d3b37;
+            --gold:#f1b24a;
+            --purple:#a855f7;
+            --silver:#b7b7b3;
+            --glow:rgba(168,85,247,.35);
+            --white-square:#eeeed2;
+            --black-square:#769656;
+        }
+
+        *{box-sizing:border-box}
+        body{
+            margin:0;
+            font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+            background:linear-gradient(180deg,#191919 0%, #23211f 100%);
+            color:var(--text);
+            min-height:100vh;
+        }
+
+        .topbar{
+            height:64px;
+            display:flex;
+            align-items:center;
+            justify-content:space-between;
+            padding:0 18px;
+            background:#151413;
+            border-bottom:1px solid #000;
+            box-shadow:0 4px 18px rgba(0,0,0,.28);
+            position:sticky;
+            top:0;
+            z-index:20;
+        }
+
+        .brand{
+            display:flex;
+            align-items:center;
+            gap:10px;
+            font-weight:800;
+            letter-spacing:.2px;
+            font-size:1.15rem;
+        }
+        .brand-badge{
+            width:34px;height:34px;border-radius:10px;
+            background:linear-gradient(135deg,var(--accent),#5f8f33);
+            display:grid;place-items:center;
+            color:#121212;
+            box-shadow:0 8px 18px rgba(129,182,76,.18);
+        }
+        .top-actions{
+            display:flex;align-items:center;gap:10px;
+        }
+        .status-pill{
+            padding:8px 12px;
+            border:1px solid var(--border);
+            background:#201f1c;
+            border-radius:999px;
+            color:var(--muted);
+            font-size:.92rem;
+        }
+        .info-btn{
+            width:36px;height:36px;border-radius:50%;
+            border:1px solid var(--border);
+            background:#25231f;
+            color:#fff;
+            cursor:pointer;
+            font-weight:800;
+        }
+
+        .page{
+            width:min(1400px,100%);
+            margin:0 auto;
+            padding:20px;
+        }
+
+        .layout{
+            display:grid;
+            grid-template-columns:minmax(340px, 1fr) 370px;
+            gap:20px;
+            align-items:start;
+        }
+
+        .board-panel{
+            background:transparent;
+        }
+
+        .player-strip{
+            background:var(--panel);
+            border:1px solid var(--border);
+            border-radius:16px 16px 0 0;
+            padding:12px 14px;
+            display:flex;
+            align-items:center;
+            justify-content:space-between;
+            gap:12px;
+        }
+        .player-left{
+            display:flex;align-items:center;gap:10px;min-width:0;
+        }
+        .avatar{
+            width:38px;height:38px;border-radius:10px;
+            display:grid;place-items:center;
+            font-weight:800;
+            background:#45423c;
+            color:#fff;
+            flex:0 0 auto;
+        }
+        .avatar.green{background:var(--accent); color:#111}
+        .player-name{
+            font-weight:700;
+            white-space:nowrap;
+            overflow:hidden;
+            text-overflow:ellipsis;
+        }
+        .player-sub{
+            font-size:.82rem;color:var(--muted);margin-top:2px;
+        }
+        .clock{
+            min-width:94px;
+            text-align:center;
+            padding:9px 12px;
+            border-radius:10px;
+            background:#171614;
+            border:1px solid #40403c;
+            font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+            font-weight:800;
+            letter-spacing:.3px;
+        }
+        .clock.active{
+            background:#f7f7f7;
+            color:#111;
+            border-color:#f7f7f7;
+        }
+
+        .captured{
+            background:var(--panel);
+            border-left:1px solid var(--border);
+            border-right:1px solid var(--border);
+            padding:8px 14px 12px;
+            min-height:34px;
+            display:flex;
+            align-items:center;
+            flex-wrap:wrap;
+            gap:6px;
+        }
+        .captured-piece{
+            width:22px;height:22px;
+            border-radius:4px;
+            background-size:contain;
+            background-repeat:no-repeat;
+            background-position:center;
+            opacity:.96;
+        }
+        .material-adv{
+            margin-left:8px;
+            color:var(--muted);
+            font-weight:700;
+            font-size:.84rem;
+        }
+
+        .board-wrap{
+            border:1px solid var(--border);
+            border-top:none;
+            background:#111;
+            border-radius:0 0 16px 16px;
+            padding:12px;
+            box-shadow:0 18px 30px rgba(0,0,0,.28);
+        }
+        .board-shell{
+            border-radius:12px;
+            overflow:hidden;
+            box-shadow:0 0 0 1px rgba(255,255,255,.04), 0 18px 40px rgba(0,0,0,.35);
+        }
+        .board-shell.magic-active{
+            box-shadow:0 0 0 1px rgba(168,85,247,.5), 0 0 30px var(--glow), 0 18px 40px rgba(0,0,0,.35);
+            cursor:crosshair;
+        }
+
+        #board{
+            width:100%;
+        }
+
+        .white-1e1d7 { background-color: var(--white-square) !important; }
+        .black-3c85d { background-color: var(--black-square) !important; }
+        .board-b72b1{
+            border:none !important;
+        }
+
+        .spell-banner{
+            display:none;
+            margin-top:12px;
+            background:linear-gradient(135deg,#7c3aed,#a855f7);
+            border:1px solid rgba(255,255,255,.08);
+            border-radius:12px;
+            padding:12px 14px;
+            font-weight:800;
+            box-shadow:0 10px 24px rgba(0,0,0,.22);
+        }
+
+        .hand-panel{
+            margin-top:12px;
+            background:var(--panel);
+            border:1px solid var(--border);
+            border-radius:16px;
+            padding:14px;
+            box-shadow:0 12px 25px rgba(0,0,0,.2);
+        }
+        .hand-head{
+            display:flex;
+            align-items:center;
+            justify-content:space-between;
+            margin-bottom:12px;
+        }
+        .hand-title{
+            font-size:.82rem;
+            text-transform:uppercase;
+            letter-spacing:.15em;
+            color:var(--muted);
+            font-weight:800;
+        }
+        .hand-note{
+            color:var(--muted);
+            font-size:.82rem;
+        }
+        .spells-row{
+            display:flex;
+            gap:10px;
+            overflow-x:auto;
+            padding-bottom:4px;
+        }
+        .spell-card{
+            min-width:96px;
+            width:96px;
+            height:128px;
+            border-radius:14px;
+            border:1px solid var(--border);
+            background:linear-gradient(180deg,#312f2b 0%, #24221f 100%);
+            cursor:pointer;
+            padding:10px 8px;
+            display:flex;
+            flex-direction:column;
+            align-items:center;
+            justify-content:flex-start;
+            text-align:center;
+            transition:transform .15s ease, border-color .15s ease, box-shadow .15s ease, opacity .15s ease;
+            position:relative;
+        }
+        .spell-card:hover{
+            transform:translateY(-3px);
+            border-color:#64615b;
+            box-shadow:0 8px 18px rgba(0,0,0,.25);
+        }
+        .spell-card.used{
+            opacity:.18;
+            pointer-events:none;
+            filter:grayscale(100%);
+        }
+        .spell-card.Legendary{ border-bottom:4px solid var(--gold); }
+        .spell-card.Rare{ border-bottom:4px solid var(--purple); }
+        .spell-card.Common{ border-bottom:4px solid var(--silver); }
+
+        .spell-icon{
+            font-size:1.7rem;
+            margin-top:8px;
+            margin-bottom:10px;
+            text-shadow:0 2px 4px rgba(0,0,0,.35);
+        }
+        .spell-name{
+            font-size:.74rem;
+            font-weight:800;
+            line-height:1.1;
+        }
+        .spell-desc{
+            margin-top:6px;
+            font-size:.68rem;
+            color:var(--muted);
+            line-height:1.2;
+        }
+
+        .sidebar{
+            display:flex;
+            flex-direction:column;
+            gap:12px;
+        }
+        .sidebar-card{
+            background:var(--panel);
+            border:1px solid var(--border);
+            border-radius:16px;
+            overflow:hidden;
+            box-shadow:0 12px 25px rgba(0,0,0,.18);
+        }
+        .sidebar-header{
+            padding:14px 16px;
+            background:#211f1c;
+            border-bottom:1px solid var(--border);
+            display:flex;
+            align-items:center;
+            justify-content:space-between;
+        }
+        .sidebar-title{
+            font-weight:800;
+            font-size:.9rem;
+            letter-spacing:.03em;
+        }
+        .sidebar-body{
+            padding:0;
+            max-height:560px;
+            overflow:auto;
+        }
+
+        .move-history{
+            display:grid;
+            grid-template-columns:42px 1fr 1fr;
+            font-size:.94rem;
+            font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+        }
+        .move-row{ display:contents; }
+        .move-row > div{
+            padding:10px 12px;
+            border-bottom:1px solid var(--border);
+        }
+        .move-num{
+            background:#201e1b;
+            color:var(--muted);
+            text-align:right;
+        }
+        .move-ply{
+            font-weight:700;
+            color:#f1f1f1;
+        }
+        .spell-ply{
+            grid-column:span 2;
+            color:#c9a3ff;
+            background:#241b2d;
+            font-weight:800;
+        }
+
+        .lobby{
+            padding:16px;
+            display:flex;
+            flex-direction:column;
+            gap:10px;
+        }
+        .lobby input{
+            width:100%;
+            border-radius:10px;
+            border:1px solid var(--border);
+            background:#141312;
+            color:#fff;
+            padding:12px 12px;
+            font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+            font-size:.9rem;
+        }
+        .btn{
+            width:100%;
+            border:none;
+            border-radius:10px;
+            padding:12px 14px;
+            background:var(--accent);
+            color:#101010;
+            font-weight:900;
+            cursor:pointer;
+            text-transform:uppercase;
+            letter-spacing:.02em;
+        }
+        .btn:hover{ background:var(--accent-2); }
+
+        .mini-state{
+            padding:16px;
+            color:var(--muted);
+            line-height:1.45;
+            font-size:.95rem;
+        }
+
+        .notification{
+            position:fixed;
+            left:50%;
+            top:90px;
+            transform:translateX(-50%);
+            background:rgba(16,16,16,.92);
+            color:#fff;
+            border:1px solid rgba(168,85,247,.6);
+            border-radius:12px;
+            padding:12px 16px;
+            z-index:200;
+            display:none;
+            box-shadow:0 0 30px var(--glow);
+            font-weight:800;
+            max-width:min(92vw, 640px);
+            text-align:center;
+        }
+
+        .modal-overlay{
+            position:fixed;
+            inset:0;
+            display:none;
+            justify-content:center;
+            align-items:center;
+            background:rgba(0,0,0,.82);
+            z-index:300;
+            padding:20px;
+        }
+        .modal{
+            width:min(760px, 100%);
+            max-height:88vh;
+            overflow:auto;
+            background:#1f1d1b;
+            border:1px solid var(--border);
+            border-radius:18px;
+            box-shadow:0 24px 60px rgba(0,0,0,.5);
+            padding:22px;
+        }
+        .modal h2{ margin:0 0 10px 0; }
+        .modal p{ color:#d8d8d8; line-height:1.55; }
+        .grimoire{
+            display:grid;
+            grid-template-columns:repeat(auto-fit, minmax(220px, 1fr));
+            gap:12px;
+            margin-top:14px;
+        }
+        .spell-row-item{
+            background:#24221f;
+            border:1px solid var(--border);
+            border-radius:14px;
+            padding:12px;
+        }
+        .spell-row-item h4{ margin:0 0 6px 0; }
+        .spell-row-item p{ margin:0; font-size:.92rem; color:#cfcfcf; }
+
+        @media (max-width: 1080px){
+            .layout{ grid-template-columns:1fr; }
+            .sidebar-body{ max-height:none; }
+        }
+    </style>
+</head>
+<body>
+    <div class="topbar">
+        <div class="brand">
+            <div class="brand-badge">♞</div>
+            <div>Wizard's Chess</div>
+        </div>
+        <div class="top-actions">
+            <div class="status-pill" id="status-pill">Connecting…</div>
+            <button class="info-btn" id="help-btn">i</button>
+        </div>
+    </div>
+
+    <div class="notification" id="notification"></div>
+
+    <div class="page">
+        <div class="layout">
+            <div class="board-panel">
+                <div class="player-strip">
+                    <div class="player-left">
+                        <div class="avatar" id="opp-avatar">P2</div>
+                        <div>
+                            <div class="player-name" id="opp-name">Opponent</div>
+                            <div class="player-sub" id="opp-sub">Waiting for a challenger…</div>
+                        </div>
+                    </div>
+                    <div class="clock" id="clock-opp">10:00</div>
+                </div>
+
+                <div class="captured" id="opp-captured"></div>
+
+                <div class="board-wrap">
+                    <div class="board-shell" id="board-shell">
+                        <div id="board"></div>
+                    </div>
+                    <div class="spell-banner" id="spell-banner"></div>
+                </div>
+
+                <div class="captured" id="my-captured" style="border-radius:0 0 16px 16px;border-top:none;"></div>
+
+                <div class="player-strip" style="border-radius:0 0 16px 16px;border-top:none;">
+                    <div class="player-left">
+                        <div class="avatar green" id="my-avatar">P1</div>
+                        <div>
+                            <div class="player-name" id="my-name">You</div>
+                            <div class="player-sub" id="my-sub">Get ready.</div>
+                        </div>
+                    </div>
+                    <div class="clock active" id="clock-my">10:00</div>
+                </div>
+
+                <div class="hand-panel">
+                    <div class="hand-head">
+                        <div class="hand-title">Your Hand</div>
+                        <div class="hand-note" id="hand-note">6 spells: 1 Legendary, 2 Rares, 3 Commons</div>
+                    </div>
+                    <div class="spells-row" id="spells-view"></div>
+                </div>
+            </div>
+
+            <div class="sidebar">
+                <div class="sidebar-card">
+                    <div class="sidebar-header">
+                        <div class="sidebar-title">Match Telemetry</div>
+                        <div style="color:var(--muted);font-size:.82rem" id="room-tag">Room</div>
+                    </div>
+                    <div class="sidebar-body">
+                        <div class="move-history" id="move-history"></div>
+                    </div>
+                </div>
+
+                <div class="sidebar-card">
+                    <div class="sidebar-header">
+                        <div class="sidebar-title">Invite</div>
+                        <div style="color:var(--muted);font-size:.82rem" id="state-tag">Waiting</div>
+                    </div>
+                    <div class="lobby" id="lobby-box">
+                        <input type="text" id="shareLink" readonly />
+                        <button class="btn" id="copy-btn">Copy Link</button>
+                    </div>
+                    <div class="mini-state" id="mini-state">
+                        Share the link above to start a game. Once a second player joins, the board unlocks and both hands become live.
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="rules-modal">
+        <div class="modal">
+            <h2>How Wizard's Chess Works</h2>
+            <p>
+                Each player receives exactly 6 spells: 1 Legendary, 2 Rare, and 3 Common.
+                Targeted spells require the correct kind of click or drag, and the server only allows a spell when it is actually your turn.
+            </p>
+            <p>
+                Expelliarmus does not end your turn. All other spells consume the turn after they resolve.
+                Kings are never directly destroyed by spells.
+            </p>
+
+            <div class="grimoire">
+                <div class="spell-row-item"><h4 style="color:var(--gold)">Avada Kedavra</h4><p>Click an enemy piece to destroy it.</p></div>
+                <div class="spell-row-item"><h4 style="color:var(--gold)">Time-Turner</h4><p>Rewind to the previous round.</p></div>
+                <div class="spell-row-item"><h4 style="color:var(--purple)">Imperio</h4><p>Force a legal move from an enemy piece.</p></div>
+                <div class="spell-row-item"><h4 style="color:var(--purple)">Sectumsempra</h4><p>Demote an enemy piece to a Pawn.</p></div>
+                <div class="spell-row-item"><h4 style="color:var(--purple)">Fiendfyre</h4><p>Destroy a target square and adjacent squares.</p></div>
+                <div class="spell-row-item"><h4 style="color:var(--silver)">Accio</h4><p>Move your piece up to 2 squares in any direction.</p></div>
+                <div class="spell-row-item"><h4 style="color:var(--silver)">Wingardium Leviosa</h4><p>Move your piece to any adjacent empty square.</p></div>
+                <div class="spell-row-item"><h4 style="color:var(--silver)">Alohomora</h4><p>Move your piece to any empty square on your half.</p></div>
+                <div class="spell-row-item"><h4 style="color:var(--silver)">Expelliarmus</h4><p>Skip the opponent's reply and move again.</p></div>
+                <div class="spell-row-item"><h4 style="color:var(--silver)">Protego</h4><p>Promote one of your Pawns to a Knight.</p></div>
+            </div>
+
+            <div style="margin-top:18px">
+                <button class="btn" id="close-help" style="max-width:220px;">Close Manual</button>
+            </div>
+        </div>
+    </div>
+
     <script>
-        const sfxMove = new Audio('https://images.chesscomfiles.com/chess-themes/sounds/_MP3_/default/move-self.mp3');
-        const sfxCapture = new Audio('https://images.chesscomfiles.com/chess-themes/sounds/_MP3_/default/capture.mp3');
-        const sfxStart = new Audio('https://images.chesscomfiles.com/chess-themes/sounds/_MP3_/default/game-start.mp3');
-        const sfxSpell = new Audio('https://images.chesscomfiles.com/chess-themes/sounds/_MP3_/default/promote.mp3');
-
         const socket = io();
-        const urlParams = new URLSearchParams(window.location.search);
-        let room = urlParams.get('room');
-        if (!room) {
-            room = Math.random().toString(36).substring(2, 9);
-            window.history.pushState({}, '', `?room=${room}`);
-        }
-        document.getElementById('shareLink').value = window.location.href;
-        socket.emit('join_room', room);
 
-        function copyLink() {
-            const copyText = document.getElementById("shareLink");
-            copyText.select();
-            document.execCommand("copy");
-            $('.lobby-box .btn-green').text("Copied!");
-            setTimeout(() => $('.lobby-box .btn-green').text("Copy Link"), 2000);
-        }
+        const room = (() => {
+            const p = new URLSearchParams(window.location.search);
+            let r = p.get("room");
+            if (!r) {
+                r = Math.random().toString(36).slice(2, 9);
+                const next = `${location.origin}${location.pathname}?room=${r}`;
+                history.replaceState({}, "", next);
+            }
+            return r;
+        })();
 
-        function showPopup(msg) {
-            $('#notification').html(msg).fadeIn(200);
-            setTimeout(() => $('#notification').fadeOut(500), 2500);
-        }
+        document.getElementById("shareLink").value = window.location.href;
+        document.getElementById("room-tag").textContent = `Room ${room}`;
 
-        // FULL 10 SPELL DICTIONARY (STATELESS AUTOMATION)
-        const ALL_SPELLS = [
-            { id: 'avada', name: 'Avada Kedavra', rarity: 'Legendary', icon: '⚡', action: 'click', desc: 'Click an enemy piece to destroy it.' },
-            { id: 'time', name: 'Time-Turner', rarity: 'Legendary', icon: '⏳', action: 'instant', desc: 'Instantly rewinds the board 1 round.' },
-            { id: 'imperio', name: 'Imperio', rarity: 'Rare', icon: '👁️', action: 'drag', desc: 'Drag an enemy piece to move it for them.' },
-            { id: 'sectum', name: 'Sectumsempra', rarity: 'Rare', icon: '🩸', action: 'click', desc: 'Click an enemy piece to demote it to a Pawn.' },
-            { id: 'fiendfyre', name: 'Fiendfyre', rarity: 'Rare', icon: '🔥', action: 'click', desc: 'Click a square. Destroys it and adjacent squares.' },
-            { id: 'accio', name: 'Accio', rarity: 'Common', icon: '🧲', action: 'drag', desc: 'Drag your piece up to 2 squares (ignores rules).' },
-            { id: 'leviosa', name: 'Leviosa', rarity: 'Common', icon: '🪶', action: 'drag', desc: 'Drag your piece to any adjacent empty square.' },
-            { id: 'alohomora', name: 'Alohomora', rarity: 'Common', icon: '🗝️', action: 'drag', desc: 'Drag your piece to any empty square in your half.' },
-            { id: 'expelliarmus', name: 'Expelliarmus', rarity: 'Common', icon: '🪄', action: 'instant', desc: 'Opponent skips next turn. You move again.' },
-            { id: 'protego', name: 'Protego', rarity: 'Common', icon: '🛡️', action: 'click', desc: 'Click your Pawn to instantly promote it to a Knight.' }
-        ];
+        const sfxMove = new Audio("https://images.chesscomfiles.com/chess-themes/sounds/_MP3_/default/move-self.mp3");
+        const sfxCapture = new Audio("https://images.chesscomfiles.com/chess-themes/sounds/_MP3_/default/capture.mp3");
+        const sfxStart = new Audio("https://images.chesscomfiles.com/chess-themes/sounds/_MP3_/default/game-start.mp3");
+        const sfxSpell = new Audio("https://images.chesscomfiles.com/chess-themes/sounds/_MP3_/default/promote.mp3");
 
-        function shuffle(arr) { return arr.sort(() => 0.5 - Math.random()); }
-        
-        // Exact Deck Generation: 1 Leg, 2 Rare, 3 Common
-        let myHand = [
-            ...shuffle(ALL_SPELLS.filter(s => s.rarity === 'Legendary')).slice(0, 1),
-            ...shuffle(ALL_SPELLS.filter(s => s.rarity === 'Rare')).slice(0, 2),
-            ...shuffle(ALL_SPELLS.filter(s => s.rarity === 'Common')).slice(0, 3)
-        ];
-
+        const game = new Chess();
         let board = null;
-        let game = new Chess();
         let myColor = null;
         let activeSpell = null;
+        let myHand = [];
         let fenHistory = [game.fen()];
-        let currentMoveNum = 1;
+        let moveNum = 1;
+        let gameStarted = false;
+        let lastSnapshot = null;
 
-        // Visual Clocks
-        let timeW = 600, timeB = 600;
-        function formatTime(s) { let m=Math.floor(s/60), sec=s%60; return m+":"+(sec<10?"0":"")+sec; }
-        setInterval(() => {
-            if(game.game_over() || !myColor) return;
-            if(game.turn() === 'w') timeW--; else timeB--;
-            $('#clock-my').text(formatTime(myColor==='w'?timeW:timeB));
-            $('#clock-opp').text(formatTime(myColor==='w'?timeB:timeW));
-        }, 1000);
+        function showPopup(msg) {
+            const el = $("#notification");
+            el.text(msg).stop(true, true).fadeIn(160);
+            setTimeout(() => el.fadeOut(260), 2200);
+        }
 
-        // Captured Pieces Logic
-        const pieceValues = { 'p': 1, 'n': 3, 'b': 3, 'r': 5, 'q': 9 };
-        const baseCounts = { 'p': 8, 'n': 2, 'b': 2, 'r': 2, 'q': 1 };
-        
+        function setStatus(text) {
+            $("#status-pill").text(text);
+            $("#state-tag").text(text);
+        }
+
+        function clearSpellMode() {
+            activeSpell = null;
+            $("#board-shell").removeClass("magic-active");
+            $("#spell-banner").hide().text("");
+        }
+
+        function setTurnUI() {
+            if (!myColor) return;
+            const myTurn = game.turn() === myColor;
+            $("#clock-my").toggleClass("active", myTurn);
+            $("#clock-opp").toggleClass("active", !myTurn);
+
+            if (game.game_over()) {
+                setStatus("Game over");
+                $("#my-sub").text("Game finished.");
+                $("#opp-sub").text("Game finished.");
+            } else if (!gameStarted) {
+                setStatus("Waiting for opponent");
+                $("#my-sub").text("Waiting for the second player.");
+                $("#opp-sub").text("Waiting for the second player.");
+            } else {
+                setStatus(myTurn ? "Your turn" : "Opponent's turn");
+                $("#my-sub").text(myTurn ? "You can move now." : "Waiting for the opponent.");
+                $("#opp-sub").text(myTurn ? "Waiting for the opponent." : "Thinking…");
+            }
+        }
+
+        function syncBoard(fen, pushHistory = true) {
+            if (!fen) return;
+            game.load(fen);
+            board.position(fen);
+            if (pushHistory && fenHistory[fenHistory.length - 1] !== fen) {
+                fenHistory.push(fen);
+            }
+            updateCapturedPieces();
+            setTurnUI();
+        }
+
+        function markUsed(spellId) {
+            $(`#card-${spellId}`).addClass("used");
+        }
+
+        function appendSpellLog(text) {
+            $("#move-history").append(
+                `<div class="move-row"><div></div><div class="move-ply spell-ply">✨ ${text}</div></div>`
+            );
+            scrollTelemetry();
+        }
+
+        function appendMove(move) {
+            const san = move.san || `${move.from}-${move.to}`;
+            if (move.color === "w") {
+                $("#move-history").append(
+                    `<div class="move-row">
+                        <div class="move-num">${moveNum}.</div>
+                        <div class="move-ply">${san}</div>
+                        <div class="move-ply"></div>
+                    </div>`
+                );
+            } else {
+                const lastRow = $("#move-history .move-row").last();
+                if (lastRow.length && lastRow.find(".move-ply").eq(2).text().trim() === "") {
+                    lastRow.find(".move-ply").eq(2).text(san);
+                } else {
+                    $("#move-history").append(
+                        `<div class="move-row">
+                            <div class="move-num">${moveNum}.</div>
+                            <div class="move-ply"></div>
+                            <div class="move-ply">${san}</div>
+                        </div>`
+                    );
+                }
+                moveNum += 1;
+            }
+            scrollTelemetry();
+        }
+
+        function scrollTelemetry() {
+            const box = $(".sidebar-body")[0];
+            if (box) box.scrollTop = box.scrollHeight;
+        }
+
         function updateCapturedPieces() {
-            let currentFEN = game.fen().split(' ')[0];
-            let counts = { w: {p:0, n:0, b:0, r:0, q:0}, b: {p:0, n:0, b:0, r:0, q:0} };
-            
-            for (let char of currentFEN) {
-                if (char >= 'a' && char <= 'z' && counts.b[char] !== undefined) counts.b[char]++;
-                if (char >= 'A' && char <= 'Z' && counts.w[char.toLowerCase()] !== undefined) counts.w[char.toLowerCase()]++;
+            const boardFen = game.fen().split(" ")[0];
+            const counts = {
+                w: { p: 0, n: 0, b: 0, r: 0, q: 0 },
+                b: { p: 0, n: 0, b: 0, r: 0, q: 0 }
+            };
+
+            for (const ch of boardFen) {
+                if (ch >= "a" && ch <= "z" && counts.b[ch] !== undefined) counts.b[ch]++;
+                if (ch >= "A" && ch <= "Z") {
+                    const p = ch.toLowerCase();
+                    if (counts.w[p] !== undefined) counts.w[p]++;
+                }
             }
 
-            let capByWhite = '', capByBlack = '';
-            let whiteScore = 0, blackScore = 0;
+            const base = { p: 8, n: 2, b: 2, r: 2, q: 1 };
+            const values = { p: 1, n: 3, b: 3, r: 5, q: 9 };
 
-            ['q', 'r', 'b', 'n', 'p'].forEach(p => {
-                let wMissing = baseCounts[p] - counts.w[p];
-                let bMissing = baseCounts[p] - counts.b[p];
-                
-                for(let i=0; i<bMissing; i++) {
-                    capByWhite += `<div class="captured-piece" style="background-image:url('https://chessboardjs.com/img/chesspieces/wikipedia/b${p.toUpperCase()}.png')"></div>`;
-                    whiteScore += pieceValues[p];
+            let capW = "";
+            let capB = "";
+            let wScore = 0;
+            let bScore = 0;
+
+            ["q", "r", "b", "n", "p"].forEach(p => {
+                const wMissing = base[p] - counts.w[p];
+                const bMissing = base[p] - counts.b[p];
+
+                for (let i = 0; i < bMissing; i++) {
+                    capW += `<div class="captured-piece" style="background-image:url('https://chessboardjs.com/img/chesspieces/wikipedia/b${p.toUpperCase()}.png')"></div>`;
+                    wScore += values[p];
                 }
-                for(let i=0; i<wMissing; i++) {
-                    capByBlack += `<div class="captured-piece" style="background-image:url('https://chessboardjs.com/img/chesspieces/wikipedia/w${p.toUpperCase()}.png')"></div>`;
-                    blackScore += pieceValues[p];
+                for (let i = 0; i < wMissing; i++) {
+                    capB += `<div class="captured-piece" style="background-image:url('https://chessboardjs.com/img/chesspieces/wikipedia/w${p.toUpperCase()}.png')"></div>`;
+                    bScore += values[p];
                 }
             });
 
-            let wAdv = whiteScore - blackScore;
-            let bAdv = blackScore - whiteScore;
+            const wAdv = wScore - bScore;
+            const bAdv = bScore - wScore;
 
-            if (wAdv > 0) capByWhite += `<span class="material-adv">+${wAdv}</span>`;
-            if (bAdv > 0) capByBlack += `<span class="material-adv">+${bAdv}</span>`;
+            if (wAdv > 0) capW += `<span class="material-adv">+${wAdv}</span>`;
+            if (bAdv > 0) capB += `<span class="material-adv">+${bAdv}</span>`;
 
-            if (myColor === 'w') {
-                $('#my-captured').html(capByWhite);
-                $('#opp-captured').html(capByBlack);
-            } else {
-                $('#my-captured').html(capByBlack);
-                $('#opp-captured').html(capByWhite);
+            if (myColor === "w") {
+                $("#my-captured").html(capW);
+                $("#opp-captured").html(capB);
+            } else if (myColor === "b") {
+                $("#my-captured").html(capB);
+                $("#opp-captured").html(capW);
             }
         }
 
-        function appendMove(text, isSpell=false) {
-            if (isSpell) {
-                $('#move-history').append(`<div class="move-row"><div></div><div class="move-ply spell-move" style="grid-column: span 2;">✨ ${text}</div></div>`);
-            } else {
-                if (game.turn() === 'b') {
-                    $('#move-history').append(`<div class="move-row"><div class="move-num">${currentMoveNum}.</div><div class="move-ply">${text}</div></div>`);
-                } else {
-                    $('#move-history .move-row:last-child').append(`<div class="move-ply">${text}</div>`);
-                    currentMoveNum++;
-                }
-            }
-            $('.sidebar-content').scrollTop($('.sidebar-content')[0].scrollHeight);
-        }
-
-        socket.on('role_assigned', (color) => {
-            myColor = color;
-            
-            // Render Hand
-            myHand.forEach(s => {
+        function renderHand(hand) {
+            $("#spells-view").empty();
+            hand.forEach(spell => {
                 const card = $(`
-                    <div class="spell-card ${s.rarity}" id="${s.id}" title="${s.desc}">
-                        <div class="spell-icon">${s.icon}</div>
-                        <div class="spell-name">${s.name}</div>
+                    <div class="spell-card ${spell.rarity}" id="card-${spell.id}" title="${spell.desc}">
+                        <div class="spell-icon">${spell.icon}</div>
+                        <div class="spell-name">${spell.name}</div>
+                        <div class="spell-desc">${spell.desc}</div>
                     </div>
                 `);
-                
-                // CRITICAL TURN-LOCK LOGIC
-                card.on('click', function() {
+
+                card.on("click", function () {
+                    if (!myColor) return;
                     if (game.turn() !== myColor) {
-                        showPopup(`⚠️ You can only cast spells on your turn!`);
+                        showPopup("You can only cast spells on your turn.");
                         return;
                     }
-                    if(!$(this).hasClass('used')) {
-                        $(this).addClass('used');
-                        sfxSpell.play();
-                        socket.emit('spell_cast', { name: s.name });
-                        
-                        // INSTANT SPELL RESOLUTION
-                        if (s.action === 'instant') {
-                            if (s.id === 'time') {
-                                if (fenHistory.length >= 3) {
-                                    game.load(fenHistory[fenHistory.length - 3]);
-                                    endMagicTurn(s.name);
-                                } else { showPopup("Not enough history to rewind!"); }
-                            }
-                            else if (s.id === 'expelliarmus') {
-                                // Sync board without changing turn. Opponent is skipped!
-                                socket.emit('magic_sync', game.fen());
-                                appendMove(`EXPELLIARMUS`, true);
-                                showPopup("Opponent Turn Skipped!");
-                            }
+                    if ($(this).hasClass("used")) return;
+
+                    if (spell.id === "time") {
+                        if (fenHistory.length < 3) {
+                            showPopup("Not enough history to rewind yet.");
                             return;
                         }
-
-                        // CLICK / DRAG ACTIVATION
-                        activeSpell = s;
-                        $('#board-wrap').addClass('magic-active');
-                        $('#spell-instruction').html(`🪄 <b>${s.name.toUpperCase()}</b>: ${s.desc}`).fadeIn(200);
+                        markUsed(spell.id);
+                        sfxSpell.play();
+                        const rewindFen = fenHistory[fenHistory.length - 3];
+                        game.load(rewindFen);
+                        board.position(rewindFen);
+                        fenHistory.push(rewindFen);
+                        clearSpellMode();
+                        appendSpellLog("TIME-TURNER");
+                        updateCapturedPieces();
+                        setTurnUI();
+                        socket.emit("spell_effect", {
+                            room: room,
+                            spell_id: spell.id,
+                            name: spell.name,
+                            fen: rewindFen,
+                            consume_turn: true
+                        });
+                        return;
                     }
+
+                    if (spell.id === "expelliarmus") {
+                        markUsed(spell.id);
+                        sfxSpell.play();
+                        clearSpellMode();
+                        appendSpellLog("EXPELLIARMUS");
+                        showPopup("Opponent skipped. You keep the move.");
+                        socket.emit("spell_effect", {
+                            room: room,
+                            spell_id: spell.id,
+                            name: spell.name,
+                            fen: game.fen(),
+                            consume_turn: false
+                        });
+                        return;
+                    }
+
+                    activeSpell = spell;
+                    $("#board-shell").addClass("magic-active");
+                    $("#spell-banner").text(`🪄 ${spell.name.toUpperCase()}: ${spell.desc}`).fadeIn(120);
+                    showPopup(`${spell.name} armed.`);
                 });
-                $('#spells-view').append(card);
+
+                $("#spells-view").append(card);
             });
-
-            if (myColor === 'b') {
-                board.orientation('black');
-                $('#my-name').text('You (Black)');
-                $('#opp-name').text('Opponent (White)');
-            } else {
-                $('#my-name').text('You (White)');
-                $('#opp-name').text('Opponent (Black)');
-            }
-            updateStatusUI();
-        });
-
-        socket.on('user_joined', () => {
-            $('#lobby-box').slideUp(300);
-            sfxStart.play();
-            updateStatusUI();
-        });
-
-        socket.on('standard_move', (move) => {
-            let res = game.move(move);
-            board.position(game.fen());
-            fenHistory.push(game.fen());
-            
-            if (res && res.captured) sfxCapture.play();
-            else sfxMove.play();
-            
-            appendMove(`${move.from}-${move.to}`);
-            updateCapturedPieces();
-            updateStatusUI();
-        });
-
-        socket.on('magic_sync', (fenState) => {
-            game.load(fenState);
-            board.position(fenState);
-            fenHistory.push(fenState);
-            sfxSpell.play();
-            updateCapturedPieces();
-            updateStatusUI();
-        });
-
-        socket.on('spell_cast', (spellData) => {
-            sfxSpell.play();
-            appendMove(`${spellData.name.toUpperCase()}`, true);
-        });
-
-        function updateStatusUI() {
-            if(!myColor) return;
-            if (game.turn() === myColor) {
-                $('#clock-my').addClass('active');
-                $('#clock-opp').removeClass('active');
-            } else {
-                $('#clock-opp').addClass('active');
-                $('#clock-my').removeClass('active');
-            }
         }
 
-        function endMagicTurn(spellName) {
-            activeSpell = null;
-            $('#board-wrap').removeClass('magic-active');
-            $('#spell-instruction').hide();
-
-            // Force turn switch
-            let tokens = game.fen().split(' ');
-            tokens[1] = (myColor === 'w') ? 'b' : 'w';
-            tokens[3] = '-'; // clear en passant
-            let nextFen = tokens.join(' ');
-            
-            game.load(nextFen);
-            fenHistory.push(nextFen);
-            board.position(nextFen);
-            
-            appendMove(`${spellName.toUpperCase()}`, true);
+        function finishTargetedSpell(spell, extraLogText) {
+            markUsed(spell.id);
+            sfxSpell.play();
+            appendSpellLog(extraLogText || spell.name.toUpperCase());
             updateCapturedPieces();
-            updateStatusUI();
-            socket.emit('magic_sync', nextFen);
+            setTurnUI();
+            socket.emit("spell_effect", {
+                room: room,
+                spell_id: spell.id,
+                name: spell.name,
+                fen: game.fen(),
+                consume_turn: true
+            });
+            clearSpellMode();
         }
 
-        // CLICK RESOLUTION ENGINE
-        $('#board').on('click', '.square-55d63', function() {
-            if (!activeSpell || activeSpell.action !== 'click') return;
-            let sq = $(this).attr('data-square');
-            let p = game.get(sq);
+        function isOnYourHalf(square) {
+            const rank = parseInt(square[1], 10);
+            return myColor === "w" ? rank <= 4 : rank >= 5;
+        }
 
-            if (activeSpell.id === 'avada') {
-                if (p && p.color !== myColor && p.type !== 'k') {
-                    game.remove(sq); endMagicTurn(activeSpell.name);
-                } else showPopup("Must click a non-King enemy piece.");
-            }
-            else if (activeSpell.id === 'sectum') {
-                if (p && p.color !== myColor && p.type !== 'k') {
-                    game.remove(sq); game.put({type:'p', color:p.color}, sq); endMagicTurn(activeSpell.name);
-                } else showPopup("Must click an enemy piece.");
-            }
-            else if (activeSpell.id === 'fiendfyre') {
-                let file = sq.charCodeAt(0), rank = parseInt(sq[1]);
-                for(let f = file-1; f <= file+1; f++) {
-                    for(let r = rank-1; r <= rank+1; r++) {
-                        let targetSq = String.fromCharCode(f) + r;
-                        let tP = game.get(targetSq);
-                        if (tP && tP.type !== 'k') game.remove(targetSq);
-                    }
-                }
-                endMagicTurn(activeSpell.name);
-            }
-            else if (activeSpell.id === 'protego') {
-                if (p && p.color === myColor && p.type === 'p') {
-                    game.remove(sq); game.put({type:'n', color:myColor}, sq); endMagicTurn(activeSpell.name);
-                } else showPopup("Must click one of your Pawns.");
-            }
-        });
-
-        // DRAG RESOLUTION ENGINE
         function onDragStart(source, piece) {
             if (game.game_over()) return false;
-            
-            // Spell Constraints
+            if (!myColor) return false;
+
             if (activeSpell) {
-                if (activeSpell.action !== 'drag') return false;
-                if (activeSpell.id === 'imperio') return piece.charAt(0) !== myColor; // Must drag enemy
-                return piece.charAt(0) === myColor; // Others must drag own
+                if (activeSpell.action !== "drag") return false;
+                if (activeSpell.id === "imperio") {
+                    return piece.charAt(0) !== myColor;
+                }
+                return piece.charAt(0) === myColor;
             }
-            
-            // Standard Constraints
+
             if (game.turn() !== myColor) return false;
-            if ((myColor === 'w' && piece.search(/^b/) !== -1) || (myColor === 'b' && piece.search(/^w/) !== -1)) return false;
+            if (piece.charAt(0) !== myColor) return false;
+            return true;
         }
 
         function onDrop(source, target) {
-            if (activeSpell && activeSpell.action === 'drag') {
-                let p = game.get(source);
-                let tP = game.get(target);
-                if (tP && tP.type === 'k') return 'snapback'; // Never destroy Kings magically
+            if (activeSpell && activeSpell.action === "drag") {
+                const movingPiece = game.get(source);
+                const targetPiece = game.get(target);
 
-                let fDist = Math.abs(source.charCodeAt(0) - target.charCodeAt(0));
-                let rDist = Math.abs(source[1] - target[1]);
+                if (!movingPiece) return "snapback";
+                if (targetPiece && targetPiece.type === "k") return "snapback";
 
-                if (activeSpell.id === 'imperio') {
-                    // Temporarily flip engine turn to validate enemy move
-                    let tempFen = game.fen();
-                    let tokens = tempFen.split(' ');
-                    tokens[1] = (myColor === 'w') ? 'b' : 'w';
-                    game.load(tokens.join(' '));
-                    
-                    let move = game.move({from: source, to: target, promotion: 'q'});
-                    if (!move) { game.load(tempFen); return 'snapback'; }
-                    
-                    endMagicTurn(activeSpell.name);
+                const fileDist = Math.abs(source.charCodeAt(0) - target.charCodeAt(0));
+                const rankDist = Math.abs(parseInt(source[1], 10) - parseInt(target[1], 10));
+
+                if (activeSpell.id === "imperio") {
+                    const originalFen = game.fen();
+                    const forcedTurn = opponent(myColor);
+                    const parts = originalFen.split(" ");
+                    parts[1] = forcedTurn;
+                    game.load(parts.join(" "));
+                    const move = game.move({ from: source, to: target, promotion: "q" });
+                    if (!move) {
+                        game.load(originalFen);
+                        return "snapback";
+                    }
+                    board.position(game.fen());
+                    fenHistory.push(game.fen());
+                    finishTargetedSpell(activeSpell, `IMPERIO: ${move.san}`);
                     return;
                 }
-                else if (activeSpell.id === 'accio') {
-                    if (fDist <= 2 && rDist <= 2) {
-                        game.remove(source); game.put(p, target); endMagicTurn(activeSpell.name); return;
-                    } else return 'snapback';
+
+                if (activeSpell.id === "accio") {
+                    if (fileDist <= 2 && rankDist <= 2) {
+                        game.remove(source);
+                        game.put(movingPiece, target);
+                        board.position(game.fen());
+                        fenHistory.push(game.fen());
+                        finishTargetedSpell(activeSpell, "ACCIO");
+                        return;
+                    }
+                    return "snapback";
                 }
-                else if (activeSpell.id === 'leviosa') {
-                    if (fDist <= 1 && rDist <= 1 && !tP) {
-                        game.remove(source); game.put(p, target); endMagicTurn(activeSpell.name); return;
-                    } else return 'snapback';
+
+                if (activeSpell.id === "leviosa") {
+                    if (fileDist <= 1 && rankDist <= 1 && !targetPiece) {
+                        game.remove(source);
+                        game.put(movingPiece, target);
+                        board.position(game.fen());
+                        fenHistory.push(game.fen());
+                        finishTargetedSpell(activeSpell, "WINGARDIUM LEVIOSA");
+                        return;
+                    }
+                    return "snapback";
                 }
-                else if (activeSpell.id === 'alohomora') {
-                    let validRank = (myColor === 'w') ? target[1] <= 4 : target[1] >= 5; // Half of board
-                    if (!tP && validRank) {
-                        game.remove(source); game.put(p, target); endMagicTurn(activeSpell.name); return;
-                    } else return 'snapback';
+
+                if (activeSpell.id === "alohomora") {
+                    if (!targetPiece && isOnYourHalf(target)) {
+                        game.remove(source);
+                        game.put(movingPiece, target);
+                        board.position(game.fen());
+                        fenHistory.push(game.fen());
+                        finishTargetedSpell(activeSpell, "ALOHOMORA");
+                        return;
+                    }
+                    return "snapback";
                 }
-                return 'snapback';
+
+                return "snapback";
             }
 
-            // STANDARD MOVE
-            let move = game.move({ from: source, to: target, promotion: 'q' });
-            if (move === null) return 'snapback';
-            
-            fenHistory.push(game.fen());
-            appendMove(`${source}-${target}`);
+            if (game.turn() !== myColor) return "snapback";
 
-            if (move.captured) sfxCapture.play();
+            const move = game.move({ from: source, to: target, promotion: "q" });
+            if (move === null) return "snapback";
+
+            board.position(game.fen());
+            fenHistory.push(game.fen());
+            if (move.flags && move.flags.indexOf("c") !== -1) sfxCapture.play();
             else sfxMove.play();
 
-            socket.emit('standard_move', { from: source, to: target, promotion: 'q' });
+            appendMove(move);
             updateCapturedPieces();
-            updateStatusUI();
+            setTurnUI();
+
+            socket.emit("standard_move", {
+                room: room,
+                from: source,
+                to: target,
+                san: move.san,
+                color: move.color,
+                fen: game.fen()
+            });
         }
 
         function onSnapEnd() {
-            if(!activeSpell) board.position(game.fen());
+            board.position(game.fen());
         }
 
-        board = Chessboard('board', {
-            draggable: true, position: 'start',
-            onDragStart: onDragStart, onDrop: onDrop, onSnapEnd: onSnapEnd,
-            pieceTheme: 'https://chessboardjs.com/img/chesspieces/wikipedia/{piece}.png'
+        function clickSpellTarget(square) {
+            if (!activeSpell || activeSpell.action !== "click") return;
+
+            const p = game.get(square);
+            if (activeSpell.id === "avada") {
+                if (p && p.color !== myColor && p.type !== "k") {
+                    game.remove(square);
+                    board.position(game.fen());
+                    fenHistory.push(game.fen());
+                    finishTargetedSpell(activeSpell, "AVADA KEDAVRA");
+                } else {
+                    showPopup("Click a non-King enemy piece.");
+                }
+                return;
+            }
+
+            if (activeSpell.id === "sectum") {
+                if (p && p.color !== myColor && p.type !== "k") {
+                    game.remove(square);
+                    game.put({ type: "p", color: p.color }, square);
+                    board.position(game.fen());
+                    fenHistory.push(game.fen());
+                    finishTargetedSpell(activeSpell, "SECTUMSEMPRA");
+                } else {
+                    showPopup("Click an enemy piece.");
+                }
+                return;
+            }
+
+            if (activeSpell.id === "fiendfyre") {
+                const file = square.charCodeAt(0);
+                const rank = parseInt(square[1], 10);
+                for (let f = file - 1; f <= file + 1; f++) {
+                    for (let r = rank - 1; r <= rank + 1; r++) {
+                        const sq = String.fromCharCode(f) + String(r);
+                        const t = game.get(sq);
+                        if (t && t.type !== "k") game.remove(sq);
+                    }
+                }
+                board.position(game.fen());
+                fenHistory.push(game.fen());
+                finishTargetedSpell(activeSpell, "FIENDFYRE");
+                return;
+            }
+
+            if (activeSpell.id === "protego") {
+                if (p && p.color === myColor && p.type === "p") {
+                    game.remove(square);
+                    game.put({ type: "n", color: myColor }, square);
+                    board.position(game.fen());
+                    fenHistory.push(game.fen());
+                    finishTargetedSpell(activeSpell, "PROTEGO");
+                } else {
+                    showPopup("Click one of your Pawns.");
+                }
+                return;
+            }
+        }
+
+        board = Chessboard("board", {
+            draggable: true,
+            position: "start",
+            orientation: "white",
+            pieceTheme: "https://chessboardjs.com/img/chesspieces/wikipedia/{piece}.png",
+            onDragStart: onDragStart,
+            onDrop: onDrop,
+            onSnapEnd: onSnapEnd
         });
+
+        $(window).on("resize", function () {
+            if (board && board.resize) board.resize();
+        });
+
+        $("#board").on("click", ".square-55d63", function () {
+            const square = $(this).attr("data-square");
+            clickSpellTarget(square);
+        });
+
+        $("#help-btn").on("click", function () {
+            $("#rules-modal").css("display", "flex");
+        });
+
+        $("#close-help").on("click", function () {
+            $("#rules-modal").hide();
+        });
+
+        $("#copy-btn").on("click", async function () {
+            try {
+                await navigator.clipboard.writeText(document.getElementById("shareLink").value);
+                $(this).text("Copied!");
+                setTimeout(() => $(this).text("Copy Link"), 1500);
+            } catch (e) {
+                const input = document.getElementById("shareLink");
+                input.select();
+                document.execCommand("copy");
+                $(this).text("Copied!");
+                setTimeout(() => $(this).text("Copy Link"), 1500);
+            }
+        });
+
+        function applyRoomState(state) {
+            lastSnapshot = state;
+            $("#room-tag").text(`Room ${state.room}`);
+            gameStarted = !!state.started;
+
+            if (state.white_connected && state.black_connected) {
+                $("#lobby-box").slideUp(180);
+                $("#mini-state").text("Both players connected. The game is live.");
+            } else {
+                $("#lobby-box").slideDown(0);
+                $("#mini-state").text("Waiting for another player to join.");
+            }
+
+            setTurnUI();
+        }
+
+        socket.on("connect", function () {
+            setStatus("Joining room…");
+            socket.emit("join_room", { room: room });
+        });
+
+        socket.on("role_assigned", function (payload) {
+            myColor = payload.color;
+            myHand = payload.hand || [];
+            const snap = payload.snapshot || null;
+
+            if (myColor === "w") {
+                $("#my-name").text("You (White)");
+                $("#opp-name").text("Opponent (Black)");
+                $("#my-avatar").text("P1");
+                $("#opp-avatar").text("P2");
+                board.orientation("white");
+            } else if (myColor === "b") {
+                $("#my-name").text("You (Black)");
+                $("#opp-name").text("Opponent (White)");
+                $("#my-avatar").text("P1");
+                $("#opp-avatar").text("P2");
+                board.orientation("black");
+            } else {
+                $("#my-name").text("Spectator");
+                $("#my-sub").text("You are watching the game.");
+            }
+
+            renderHand(myHand);
+            syncBoard(snap ? snap.fen : game.fen(), false);
+            applyRoomState(snap || {});
+            if (myColor === "w" || myColor === "b") {
+                showPopup(`You are ${myColor === "w" ? "White" : "Black"}.`);
+            }
+        });
+
+        socket.on("room_state", function (state) {
+            if (!state) return;
+            applyRoomState(state);
+        });
+
+        socket.on("game_ready", function (state) {
+            gameStarted = true;
+            $("#lobby-box").slideUp(180);
+            $("#mini-state").text("The match has begun.");
+            sfxStart.play();
+            applyRoomState(state);
+        });
+
+        socket.on("standard_move", function (payload) {
+            if (!payload || !payload.fen) return;
+            game.load(payload.fen);
+            board.position(payload.fen);
+            if (fenHistory[fenHistory.length - 1] !== payload.fen) fenHistory.push(payload.fen);
+            appendMove({ color: payload.color, san: payload.san, from: payload.from, to: payload.to });
+            if (payload.san && payload.san.indexOf("x") !== -1) sfxCapture.play();
+            else sfxMove.play();
+            updateCapturedPieces();
+            setTurnUI();
+        });
+
+        socket.on("spell_effect", function (payload) {
+            if (!payload) return;
+
+            clearSpellMode();
+
+            if (payload.consume_turn) {
+                if (payload.fen) {
+                    game.load(payload.fen);
+                    board.position(payload.fen);
+                    if (fenHistory[fenHistory.length - 1] !== payload.fen) fenHistory.push(payload.fen);
+                    updateCapturedPieces();
+                }
+                appendSpellLog(payload.name.toUpperCase());
+                sfxSpell.play();
+                setTurnUI();
+            } else {
+                appendSpellLog(payload.name.toUpperCase());
+                showPopup("Expelliarmus! You get another move.");
+                sfxSpell.play();
+            }
+        });
+
+        socket.on("action_denied", function (payload) {
+            clearSpellMode();
+            if (payload && payload.snapshot && payload.snapshot.fen) {
+                game.load(payload.snapshot.fen);
+                board.position(payload.snapshot.fen);
+                if (fenHistory[fenHistory.length - 1] !== payload.snapshot.fen) fenHistory.push(payload.snapshot.fen);
+                updateCapturedPieces();
+            }
+            setTurnUI();
+            showPopup(payload && payload.reason ? payload.reason : "Action denied.");
+        });
+
+        socket.on("disconnect", function () {
+            setStatus("Disconnected");
+            $("#my-sub").text("Connection lost.");
+            $("#opp-sub").text("Connection lost.");
+        });
+
+        setTurnUI();
+        updateCapturedPieces();
     </script>
 </body>
 </html>
 """
 
-if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 5000))
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 5000))
     print(f"> SERVER ONLINE. PORT: {port}")
-    socketio.run(app, host='0.0.0.0', port=port)
+    socketio.run(app, host="0.0.0.0", port=port, allow_unsafe_werkzeug=True)
