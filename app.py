@@ -4,22 +4,22 @@ from flask import Flask, render_template_string, request
 from flask_socketio import SocketIO, join_room, leave_room, emit
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'wizard_chess_secret_v3')
+app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'wizard_chess_secret_v4')
 socketio = SocketIO(app, cors_allowed_origins='*', async_mode='threading')
 
 START_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1'
 
 SPELLS = [
-    {'id': 'avada', 'name': 'Avada Kedavra', 'rarity': 'Legendary', 'icon': '⚡', 'type': 'enemy', 'desc': 'Click an enemy piece to destroy it.'},
-    {'id': 'time', 'name': 'Time-Turner', 'rarity': 'Legendary', 'icon': '⏳', 'type': 'instant', 'desc': 'Rewind the board to the previous state.'},
-    {'id': 'imperio', 'name': 'Imperio', 'rarity': 'Rare', 'icon': '👁️', 'type': 'drag_enemy', 'desc': 'Select an enemy piece, then its destination.'},
-    {'id': 'sectum', 'name': 'Sectumsempra', 'rarity': 'Rare', 'icon': '🩸', 'type': 'enemy', 'desc': 'Demote an enemy piece to a Pawn.'},
-    {'id': 'fiendfyre', 'name': 'Fiendfyre', 'rarity': 'Rare', 'icon': '🔥', 'type': 'any', 'desc': 'Destroy a 3x3 square area.'},
-    {'id': 'accio', 'name': 'Accio', 'rarity': 'Common', 'icon': '🧲', 'type': 'drag_own', 'desc': 'Move your piece up to 2 squares (ignores rules).'},
-    {'id': 'leviosa', 'name': 'Wingardium Leviosa', 'rarity': 'Common', 'icon': '🪶', 'type': 'drag_own', 'desc': 'Move your piece to any adjacent empty square.'},
-    {'id': 'alohomora', 'name': 'Alohomora', 'rarity': 'Common', 'icon': '🗝️', 'type': 'drag_own', 'desc': 'Move your piece to any empty square on your half.'},
-    {'id': 'expelliarmus', 'name': 'Expelliarmus', 'rarity': 'Common', 'icon': '🪄', 'type': 'instant', 'desc': 'Keep your turn and move again.'},
-    {'id': 'protego', 'name': 'Protego', 'rarity': 'Common', 'icon': '🛡️', 'type': 'own_pawn', 'desc': 'Promote one of your Pawns to a Knight.'},
+    {'id': 'avada', 'name': 'Avada Kedavra', 'rarity': 'Legendary', 'icon': 'fa-solid fa-bolt', 'type': 'enemy', 'desc': 'Click an enemy piece to destroy it.'},
+    {'id': 'time', 'name': 'Time-Turner', 'rarity': 'Legendary', 'icon': 'fa-solid fa-hourglass-half', 'type': 'instant', 'desc': 'Rewind the board.'},
+    {'id': 'imperio', 'name': 'Imperio', 'rarity': 'Rare', 'icon': 'fa-solid fa-eye', 'type': 'drag_enemy', 'desc': 'Select enemy, then destination.'},
+    {'id': 'sectum', 'name': 'Sectumsempra', 'rarity': 'Rare', 'icon': 'fa-solid fa-droplet', 'type': 'enemy', 'desc': 'Demote an enemy piece to a Pawn.'},
+    {'id': 'fiendfyre', 'name': 'Fiendfyre', 'rarity': 'Rare', 'icon': 'fa-solid fa-fire', 'type': 'any', 'desc': 'Destroy a 3x3 square area.'},
+    {'id': 'accio', 'name': 'Accio', 'rarity': 'Common', 'icon': 'fa-solid fa-magnet', 'type': 'drag_own', 'desc': 'Move your piece up to 2 squares.'},
+    {'id': 'leviosa', 'name': 'Wingardium Leviosa', 'rarity': 'Common', 'icon': 'fa-solid fa-feather', 'type': 'drag_own', 'desc': 'Move to adjacent empty square.'},
+    {'id': 'alohomora', 'name': 'Alohomora', 'rarity': 'Common', 'icon': 'fa-solid fa-key', 'type': 'drag_own', 'desc': 'Move to any empty square on your half.'},
+    {'id': 'expelliarmus', 'name': 'Expelliarmus', 'rarity': 'Common', 'icon': 'fa-solid fa-wand-magic-sparkles', 'type': 'instant', 'desc': 'Keep your turn and move again.'},
+    {'id': 'protego', 'name': 'Protego', 'rarity': 'Common', 'icon': 'fa-solid fa-shield-halved', 'type': 'own_pawn', 'desc': 'Promote your Pawn to a Knight.'},
 ]
 
 ROOMS = {}
@@ -48,7 +48,8 @@ def get_room(room_id: str):
             'fen': START_FEN,
             'turn': 'w',
             'history': [START_FEN],
-            'players': {'w': None, 'b': None},
+            'players': {'w': None, 'b': None}, # Uses persistent player_id
+            'sids': {'w': None, 'b': None},    # Uses current connection sid
             'hands': {'w': None, 'b': None},
             'used': {'w': set(), 'b': set()},
             'sid_to_color': {},
@@ -56,7 +57,8 @@ def get_room(room_id: str):
     return ROOMS[room_id]
 
 def snapshot(room_id: str):
-    room = ROOMS[room_id]
+    room = ROOMS.get(room_id)
+    if not room: return {}
     return {
         'room': room_id,
         'fen': room['fen'],
@@ -66,31 +68,38 @@ def snapshot(room_id: str):
         'started': room['players']['w'] is not None and room['players']['b'] is not None,
     }
 
-def color_for_sid(room, sid):
-    return room['sid_to_color'].get(sid)
-
 @app.route('/')
 def index():
     return render_template_string(HTML_PAYLOAD)
 
 @socketio.on('join_room')
 def handle_join(data):
-    room_id = data['room'] if isinstance(data, dict) else str(data)
+    room_id = data.get('room')
+    player_id = data.get('player_id') # Persistent ID prevents mobile dropouts
+    if not room_id or not player_id:
+        return
+
     room = get_room(room_id)
 
-    if room['players']['w'] is None:
+    # Reconnect logic to prevent getting stuck as spectator
+    color = 's'
+    if room['players']['w'] == player_id:
         color = 'w'
+    elif room['players']['b'] == player_id:
+        color = 'b'
+    elif room['players']['w'] is None:
+        color = 'w'
+        room['players']['w'] = player_id
     elif room['players']['b'] is None:
         color = 'b'
-    else:
-        color = 's'
+        room['players']['b'] = player_id
 
     join_room(room_id)
     SID_TO_ROOM[request.sid] = room_id
+    room['sid_to_color'][request.sid] = color
 
     if color in ('w', 'b'):
-        room['players'][color] = request.sid
-        room['sid_to_color'][request.sid] = color
+        room['sids'][color] = request.sid
         if room['hands'][color] is None:
             room['hands'][color] = fresh_hand()
 
@@ -100,18 +109,18 @@ def handle_join(data):
         'snapshot': snapshot(room_id),
     }, to=request.sid)
 
-    emit('room_state', snapshot(room_id), room=room_id)
+    emit('room_state', snapshot(room_id), to=room_id)
     if room['players']['w'] is not None and room['players']['b'] is not None:
-        emit('game_ready', snapshot(room_id), room=room_id)
+        emit('game_ready', snapshot(room_id), to=room_id)
 
 @socketio.on('standard_move')
 def handle_standard_move(data):
-    room_id = SID_TO_ROOM.get(request.sid)
+    room_id = data.get('room')
     if not room_id or room_id not in ROOMS:
         return
 
     room = ROOMS[room_id]
-    color = color_for_sid(room, request.sid)
+    color = room['sid_to_color'].get(request.sid)
     if color not in ('w', 'b'):
         return
 
@@ -127,10 +136,6 @@ def handle_standard_move(data):
     new_fen = data.get('fen')
     if base_fen != room['fen']:
         emit('action_denied', {'reason': 'Board out of sync. Resyncing.', 'snapshot': snapshot(room_id)}, to=request.sid)
-        return
-
-    if not new_fen:
-        emit('action_denied', {'reason': 'Missing move data.', 'snapshot': snapshot(room_id)}, to=request.sid)
         return
 
     room['fen'] = new_fen
@@ -144,21 +149,17 @@ def handle_standard_move(data):
         'color': color,
         'fen': room['fen'],
         'turn': room['turn'],
-    }, room=room_id, include_self=False)
+    }, to=room_id, include_self=False)
 
 @socketio.on('spell_effect')
 def handle_spell_effect(data):
-    room_id = SID_TO_ROOM.get(request.sid)
+    room_id = data.get('room')
     if not room_id or room_id not in ROOMS:
         return
 
     room = ROOMS[room_id]
-    color = color_for_sid(room, request.sid)
+    color = room['sid_to_color'].get(request.sid)
     if color not in ('w', 'b'):
-        return
-
-    if room['players']['w'] is None or room['players']['b'] is None:
-        emit('action_denied', {'reason': 'Waiting for both players.', 'snapshot': snapshot(room_id)}, to=request.sid)
         return
 
     if room['turn'] != color:
@@ -167,12 +168,7 @@ def handle_spell_effect(data):
 
     spell_id = data.get('spell_id')
     if spell_id in room['used'][color]:
-        emit('action_denied', {'reason': 'That spell has already been used.', 'snapshot': snapshot(room_id)}, to=request.sid)
-        return
-
-    base_fen = data.get('base_fen')
-    if base_fen != room['fen']:
-        emit('action_denied', {'reason': 'Board out of sync. Resyncing.', 'snapshot': snapshot(room_id)}, to=request.sid)
+        emit('action_denied', {'reason': 'Spell already used.', 'snapshot': snapshot(room_id)}, to=request.sid)
         return
 
     consume_turn = bool(data.get('consume_turn', True))
@@ -180,24 +176,15 @@ def handle_spell_effect(data):
 
     if spell_id == 'time':
         if len(room['history']) < 2:
-            emit('action_denied', {'reason': 'Not enough history to rewind.', 'snapshot': snapshot(room_id)}, to=request.sid)
+            emit('action_denied', {'reason': 'Cannot rewind further.', 'snapshot': snapshot(room_id)}, to=request.sid)
             return
-        # Rewind history
-        room['history'].pop() # remove current
+        room['history'].pop() 
         new_fen = room['history'][-1]
         consume_turn = True
-        
-        # To make it the other player's turn correctly after a rewind, 
-        # we let the FEN side to move dictate it.
 
     if spell_id == 'expelliarmus':
         consume_turn = False
-        if not new_fen:
-            new_fen = room['fen']
-
-    if not new_fen:
-        emit('action_denied', {'reason': 'Missing spell data.', 'snapshot': snapshot(room_id)}, to=request.sid)
-        return
+        if not new_fen: new_fen = room['fen']
 
     room['used'][color].add(spell_id)
     room['fen'] = new_fen
@@ -215,7 +202,7 @@ def handle_spell_effect(data):
         'color': color,
         'turn': room['turn'],
         'log': data.get('log', ''),
-    }, room=room_id, include_self=False)
+    }, to=room_id, include_self=False)
 
 @socketio.on('disconnect')
 def handle_disconnect():
@@ -225,18 +212,16 @@ def handle_disconnect():
 
     room = ROOMS[room_id]
     color = room['sid_to_color'].pop(request.sid, None)
-    if color in ('w', 'b') and room['players'].get(color) == request.sid:
-        room['players'][color] = None
+    if color in ('w', 'b'):
+        room['sids'][color] = None
+
+    # Note: We do NOT wipe room['players'][color] here. 
+    # This allows mobile users to refresh/reconnect and claim their spot using their player_id!
 
     try:
         leave_room(room_id)
     except Exception:
         pass
-
-    emit('room_state', snapshot(room_id), room=room_id)
-
-    if room['players']['w'] is None and room['players']['b'] is None:
-        ROOMS.pop(room_id, None)
 
 
 HTML_PAYLOAD = r'''
@@ -249,6 +234,7 @@ HTML_PAYLOAD = r'''
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap');
         
@@ -258,6 +244,7 @@ HTML_PAYLOAD = r'''
             color: #ffffff;
             overscroll-behavior: none;
             margin: 0; padding: 0;
+            overflow: hidden; /* Prevents scrollbars, maximizing screen space */
         }
 
         .bg-panel { background-color: #262421; }
@@ -291,9 +278,12 @@ HTML_PAYLOAD = r'''
             background-repeat: no-repeat; background-position: center;
             position: relative; z-index: 10; cursor: pointer;
             transition: transform 0.05s ease;
+            user-select: none; /* Prevents text highlighting */
+            -webkit-user-drag: none; /* FIX FOR LAPTOPS: Prevents native browser image dragging */
         }
         .piece:active { transform: scale(1.1); }
 
+        /* Chess.com Neo Pieces */
         .wP { background-image: url('https://images.chesscomfiles.com/chess-themes/pieces/neo/150/wp.png'); }
         .wN { background-image: url('https://images.chesscomfiles.com/chess-themes/pieces/neo/150/wn.png'); }
         .wB { background-image: url('https://images.chesscomfiles.com/chess-themes/pieces/neo/150/wb.png'); }
@@ -308,117 +298,128 @@ HTML_PAYLOAD = r'''
         .bK { background-image: url('https://images.chesscomfiles.com/chess-themes/pieces/neo/150/bk.png'); }
 
         .mini-piece { width: 18px; height: 18px; display: inline-block; background-size: contain; margin-right: -4px; }
-        ::-webkit-scrollbar { width: 6px; height: 6px; }
-        ::-webkit-scrollbar-track { background: #1f1e1b; }
-        ::-webkit-scrollbar-thumb { background: #3f3e3b; border-radius: 4px; }
         
-        .spell-card { transition: all 0.2s; }
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: #262421; }
+        ::-webkit-scrollbar-thumb { background: #4b4845; border-radius: 4px; }
+        
+        .spell-card { transition: all 0.2s; position: relative; overflow: hidden; }
+        .spell-card::before {
+            content: ''; position: absolute; inset: 0; background: linear-gradient(180deg, rgba(255,255,255,0.05) 0%, transparent 100%); pointer-events: none;
+        }
         .spell-card.active { border-color: #81b64c; box-shadow: 0 0 15px rgba(129, 182, 76, 0.4); transform: translateY(-4px); }
-        .spell-card.used { opacity: 0.3; filter: grayscale(1); pointer-events: none; }
+        .spell-card.used { opacity: 0.25; filter: grayscale(1); pointer-events: none; }
         
         .toast {
             position: fixed; top: 20px; left: 50%; transform: translateX(-50%);
             background: #262421; border: 1px solid #81b64c; padding: 12px 24px;
-            border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.8);
+            border-radius: 8px; box-shadow: 0 8px 30px rgba(0,0,0,0.8);
             z-index: 1000; display: none; font-weight: bold; text-align: center;
         }
 
         .overlay {
-            position: absolute; inset: 0; background: rgba(0,0,0,0.6);
+            position: absolute; inset: 0; background: rgba(0,0,0,0.7);
             display: flex; flex-direction: column; justify-content: center; align-items: center;
-            z-index: 50; backdrop-filter: blur(2px);
+            z-index: 50; backdrop-filter: blur(4px);
         }
     </style>
 </head>
-<body class="flex flex-col lg:flex-row h-screen overflow-hidden">
+<body class="flex flex-col lg:flex-row h-screen">
 
     <div id="toast" class="toast text-white">Message</div>
 
-    <!-- Main Board Area -->
-    <div class="flex-grow flex flex-col items-center justify-center p-2 lg:p-6 w-full lg:w-2/3 h-full overflow-y-auto">
-        <div class="w-full max-w-[700px] flex flex-col gap-2">
+    <div class="flex-grow flex flex-col items-center justify-center p-2 lg:p-4 w-full lg:w-3/4 h-[65vh] lg:h-full bg-[#302e2b]">
+        <!-- Responsive wrapper: Constrains width by max height to remain perfectly square -->
+        <div class="w-full h-full flex flex-col max-w-[90vh] max-h-[90vh] gap-2 lg:gap-3 justify-center">
             
-            <!-- Top Player -->
-            <div class="flex justify-between items-center px-2">
+            <!-- Top Player (Opponent) -->
+            <div class="flex justify-between items-center bg-[#262421] px-3 py-2 rounded shadow-md border border-[#3f3e3b]">
                 <div class="flex items-center gap-3">
-                    <div class="w-10 h-10 bg-[#1f1e1b] rounded overflow-hidden flex items-center justify-center">
-                        <img src="https://images.chesscomfiles.com/uploads/v1/user/default_dark.537554ee.png" class="w-full h-full object-cover">
+                    <div class="w-10 h-10 bg-[#1f1e1b] rounded flex items-center justify-center shadow-inner overflow-hidden border border-[#3f3e3b]">
+                        <img src="https://images.chesscomfiles.com/chess-themes/pieces/neo/150/bp.png" class="w-8 h-8 object-contain drop-shadow-lg">
                     </div>
                     <div>
-                        <div class="font-bold text-sm" id="opp-name">Opponent</div>
-                        <div class="text-xs text-muted" id="opp-status">Connecting...</div>
-                        <div class="flex items-center mt-1" id="captured-top"></div>
+                        <div class="font-bold text-sm tracking-wide" id="opp-name">Opponent</div>
+                        <div class="flex items-center mt-0.5 min-h-[18px]" id="captured-top"></div>
                     </div>
                 </div>
+                <div class="text-xs text-muted font-semibold bg-[#1f1e1b] px-3 py-1.5 rounded-full" id="opp-status">Connecting</div>
             </div>
 
             <!-- Board -->
-            <div class="relative w-full aspect-square border-4 border-[#1f1e1b] rounded shadow-2xl overflow-hidden">
+            <div class="w-full aspect-square border-4 border-[#262421] rounded shadow-2xl overflow-hidden relative">
                 <div id="board" class="w-full h-full grid grid-cols-8 grid-rows-8 select-none"></div>
                 
                 <!-- Waiting Overlay -->
                 <div id="waiting-overlay" class="overlay">
-                    <div class="bg-[#1f1e1b] border border-[#3f3e3b] p-6 rounded-lg text-center max-w-[80%]">
-                        <h2 class="text-xl font-bold mb-2">Waiting for Opponent</h2>
-                        <p class="text-sm text-muted mb-4">Share this room link with a friend to play.</p>
-                        <input type="text" id="share-link" readonly class="w-full bg-[#141312] border border-[#3f3e3b] text-white p-2 rounded mb-2 text-xs font-mono">
-                        <button onclick="copyLink()" class="bg-[#81b64c] text-black font-bold px-4 py-2 rounded text-sm w-full hover:bg-[#a3d160]">Copy Link</button>
+                    <div class="bg-[#262421] border border-[#3f3e3b] p-6 rounded-xl text-center max-w-[85%] shadow-2xl">
+                        <h2 class="text-xl font-bold mb-2 text-white">Match Lobby</h2>
+                        <p class="text-sm text-muted mb-4">Send this link to a friend to start the match.</p>
+                        <div class="flex gap-2">
+                            <input type="text" id="share-link" readonly class="w-full bg-[#141312] border border-[#3f3e3b] text-white p-3 rounded-lg text-xs font-mono focus:outline-none">
+                            <button onclick="copyLink()" class="bg-[#81b64c] hover:bg-[#a3d160] text-black font-extrabold px-4 rounded-lg text-sm transition"><i class="fa-solid fa-copy"></i></button>
+                        </div>
                     </div>
                 </div>
 
-                <!-- Spell Banner -->
-                <div id="spell-banner" class="hidden absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-purple-600 bg-opacity-95 text-white px-6 py-4 rounded-xl font-bold text-center z-50 shadow-2xl border border-purple-400 w-[80%] max-w-[300px]">
-                    <div id="spell-banner-title" class="text-2xl mb-1">SPELL</div>
-                    <div id="spell-banner-desc" class="text-sm font-normal text-purple-100 mb-4">Action</div>
-                    <button onclick="cancelSpell()" class="text-sm bg-black bg-opacity-40 hover:bg-opacity-60 px-4 py-2 rounded w-full">Cancel Spell</button>
+                <!-- Spell Active Overlay -->
+                <div id="spell-banner" class="hidden absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-gradient-to-r from-purple-700 to-purple-500 text-white px-6 py-4 rounded-xl font-bold text-center z-50 shadow-[0_0_30px_rgba(168,85,247,0.5)] border border-purple-300 w-[85%] max-w-[320px]">
+                    <div id="spell-banner-title" class="text-2xl mb-1 drop-shadow-md"><i class="fa-solid fa-wand-magic-sparkles"></i> SPELL</div>
+                    <div id="spell-banner-desc" class="text-sm font-medium text-purple-100 mb-4">Action</div>
+                    <button onclick="cancelSpell()" class="text-sm bg-black bg-opacity-40 hover:bg-opacity-60 px-4 py-2 rounded-lg w-full transition uppercase tracking-wider font-bold">Cancel</button>
                 </div>
             </div>
 
-            <!-- Bottom Player -->
-            <div class="flex justify-between items-center px-2">
+            <!-- Bottom Player (You) -->
+            <div class="flex justify-between items-center bg-[#262421] px-3 py-2 rounded shadow-md border border-[#3f3e3b]">
                 <div class="flex items-center gap-3">
-                    <div class="w-10 h-10 bg-[#1f1e1b] rounded overflow-hidden flex items-center justify-center">
-                        <img src="https://images.chesscomfiles.com/uploads/v1/user/default_light.6456fef9.png" class="w-full h-full object-cover">
+                    <div class="w-10 h-10 bg-[#1f1e1b] rounded flex items-center justify-center shadow-inner overflow-hidden border border-[#3f3e3b]">
+                        <img src="https://images.chesscomfiles.com/chess-themes/pieces/neo/150/wp.png" class="w-8 h-8 object-contain drop-shadow-lg">
                     </div>
                     <div>
-                        <div class="font-bold text-sm" id="my-name">You</div>
-                        <div class="text-xs text-[#81b64c]" id="my-status">Connecting...</div>
-                        <div class="flex items-center mt-1" id="captured-bottom"></div>
+                        <div class="font-bold text-sm tracking-wide" id="my-name">You</div>
+                        <div class="flex items-center mt-0.5 min-h-[18px]" id="captured-bottom"></div>
                     </div>
                 </div>
-            </div>
-
-            <!-- Spells Hand -->
-            <div class="mt-2 bg-panel border border-[#3f3e3b] p-3 rounded-lg shadow-lg">
-                <div class="flex justify-between items-center mb-2">
-                    <h3 class="font-bold text-xs text-muted uppercase tracking-wider">Your Grimoire</h3>
-                    <span id="turn-indicator" class="text-xs font-bold px-2 py-1 rounded bg-[#1f1e1b]"></span>
-                </div>
-                <div id="spells-container" class="flex gap-3 overflow-x-auto pb-2 custom-scrollbar">
-                    <!-- Spells injected here -->
-                </div>
+                <div class="text-xs font-bold bg-[#81b64c] text-black px-3 py-1.5 rounded-full shadow" id="my-status">Connecting</div>
             </div>
 
         </div>
     </div>
 
-    <!-- Sidebar Area -->
-    <div class="w-full lg:w-1/3 xl:w-[400px] bg-panel flex flex-col border-l border-[#3f3e3b] h-[30vh] lg:h-full">
-        <!-- Move History -->
-        <div class="p-3 border-b border-[#3f3e3b] font-bold text-sm text-muted uppercase">Match Log</div>
-        <div class="flex-grow overflow-y-auto p-4 custom-scrollbar bg-[#1f1e1b]" id="move-history">
-            <!-- Moves injected here -->
+    <div class="w-full lg:w-1/4 xl:w-[420px] bg-[#262421] border-l border-[#3f3e3b] flex flex-col h-[35vh] lg:h-full z-10 shadow-2xl">
+        
+        <!-- Spell Grimoire -->
+        <div class="p-4 border-b border-[#3f3e3b] bg-[#211f1c]">
+            <div class="flex justify-between items-center mb-3">
+                <h3 class="font-bold text-xs text-muted uppercase tracking-widest"><i class="fa-solid fa-book-journal-whills mr-1"></i> Your Grimoire</h3>
+                <span id="turn-indicator" class="text-[10px] font-bold px-2 py-1 rounded bg-[#1f1e1b] text-muted">WAITING</span>
+            </div>
+            <div id="spells-container" class="grid grid-cols-3 sm:grid-cols-6 lg:grid-cols-3 gap-2 overflow-y-auto max-h-[220px] custom-scrollbar pr-1">
+                <!-- Spells injected here via JS -->
+            </div>
         </div>
 
-        <!-- Rules -->
-        <div class="p-4 bg-[#262421] border-t border-[#3f3e3b] text-xs text-muted leading-relaxed">
-            <strong class="text-white">How to play:</strong> Tap to move. Spells bypass normal rules. Expelliarmus lets you keep your turn. Time-Turner rewinds the board.<br/>
-            <span class="text-yellow-500">Legendary</span> | <span class="text-purple-400">Rare</span> | <span class="text-gray-400">Common</span>
+        <!-- Match History -->
+        <div class="px-4 py-3 border-b border-[#3f3e3b] flex justify-between items-center">
+            <span class="font-bold text-xs text-muted uppercase tracking-widest"><i class="fa-solid fa-list-ul mr-1"></i> Match Log</span>
+            <button onclick="if(confirm('Are you sure you want to resign and leave?')){ window.location.href='/'; }" class="text-xs text-red-400 hover:text-red-300 transition font-bold"><i class="fa-solid fa-flag"></i> Resign</button>
+        </div>
+        <div class="flex-grow overflow-y-auto p-4 custom-scrollbar bg-[#1f1e1b] font-mono text-sm shadow-inner" id="move-history">
+            <!-- Moves injected here -->
         </div>
     </div>
 
 <script>
     const socket = io();
+    
+    // Persistent Identity for Mobile dropouts
+    let playerId = localStorage.getItem('wizard_chess_id');
+    if (!playerId) {
+        playerId = Math.random().toString(36).substring(2, 15);
+        localStorage.setItem('wizard_chess_id', playerId);
+    }
+
     const room = (() => {
         const params = new URLSearchParams(location.search);
         let r = params.get('room');
@@ -452,10 +453,8 @@ HTML_PAYLOAD = r'''
     let activeSpell = null;
     let spellSourceSq = null;
     
-    let moveLog = []; 
     let moveNum = 1;
 
-    // --- DOM Board Building ---
     function buildBoardDOM() {
         const boardEl = document.getElementById('board');
         boardEl.innerHTML = '';
@@ -473,6 +472,7 @@ HTML_PAYLOAD = r'''
                 const sqEl = document.createElement('div');
                 sqEl.className = `relative flex items-center justify-center ${isLight ? 'sq-light' : 'sq-dark'}`;
                 sqEl.id = `sq-${sqName}`;
+                // Direct onclick ensuring both laptop touch and mouse work perfectly
                 sqEl.onclick = () => handleSquareClick(sqName);
                 
                 const highlight = document.createElement('div');
@@ -483,6 +483,7 @@ HTML_PAYLOAD = r'''
 
                 const piece = document.createElement('div');
                 piece.id = `piece-${sqName}`; piece.className = 'piece'; piece.style.display = 'none';
+                piece.draggable = false; // Prevent laptop native image drag
 
                 sqEl.appendChild(highlight);
                 sqEl.appendChild(dot);
@@ -494,7 +495,8 @@ HTML_PAYLOAD = r'''
 
     function showToast(msg) {
         const t = document.getElementById('toast');
-        t.innerText = msg; t.style.display = 'block';
+        t.innerHTML = `<i class="fa-solid fa-circle-info mr-2"></i> ${msg}`; 
+        t.style.display = 'block';
         setTimeout(() => t.style.display = 'none', 2500);
     }
 
@@ -505,11 +507,10 @@ HTML_PAYLOAD = r'''
     function switchTurnInFen(fen) {
         let parts = fen.split(' ');
         parts[1] = parts[1] === 'w' ? 'b' : 'w';
-        parts[3] = '-'; // clear en passant
+        parts[3] = '-'; 
         return parts.join(' ');
     }
 
-    // --- User Interaction ---
     function handleSquareClick(sq) {
         if (!gameReady || myColor === 's' || !isMyTurn()) return;
 
@@ -527,13 +528,13 @@ HTML_PAYLOAD = r'''
             return;
         }
 
-        // Move
+        // Make Move
         if (selectedSquare) {
             const baseFen = game.fen();
             const move = game.move({ from: selectedSquare, to: sq, promotion: 'q' });
             if (move) {
                 selectedSquare = null;
-                updateUI();
+                updateUI(); // Instantly update optimistic state
                 (move.captured ? sfxCapture : sfxMove).play().catch(()=>{});
                 appendLog(move.san, myColor);
                 socket.emit('standard_move', { room, base_fen: baseFen, from: move.from, to: move.to, san: move.san, color: move.color, fen: game.fen() });
@@ -607,8 +608,7 @@ HTML_PAYLOAD = r'''
                         game.load(switchTurnInFen(game.fen()));
                         const move = game.move({from: source, to: sq, promotion:'q'});
                         if (move) {
-                            nextFen = game.fen(); // move() already swapped turn back to myColor, so we need to swap it again to give turn to opp
-                            nextFen = switchTurnInFen(nextFen); 
+                            nextFen = switchTurnInFen(game.fen()); 
                             commitSpellEffect(activeSpell, baseFen, nextFen, true, `IMPERIO: ${move.san}`);
                         } else {
                             game.load(baseFen); 
@@ -618,7 +618,6 @@ HTML_PAYLOAD = r'''
                         return;
                     }
 
-                    // Accio, Leviosa, Alohomora:
                     const movePiece = game.get(source);
                     game.remove(source);
                     game.put(movePiece, sq);
@@ -632,10 +631,10 @@ HTML_PAYLOAD = r'''
     function processInstantSpell(spell) {
         const baseFen = game.fen();
         if (spell.id === 'time') {
-            commitSpellEffect(spell, baseFen, null, true); // Backend handles rewind fen
+            commitSpellEffect(spell, baseFen, null, true); 
         }
         if (spell.id === 'expelliarmus') {
-            commitSpellEffect(spell, baseFen, baseFen, false); // Turn not consumed
+            commitSpellEffect(spell, baseFen, baseFen, false); 
         }
     }
 
@@ -648,7 +647,6 @@ HTML_PAYLOAD = r'''
             fen: newFen, consume_turn: consumeTurn, log: logStr 
         });
 
-        // Optimistic UI Update
         if (newFen) game.load(newFen);
         sfxSpell.play().catch(()=>{});
         appendLog(logStr, myColor, true);
@@ -661,15 +659,22 @@ HTML_PAYLOAD = r'''
         updateUI();
     }
 
-    // --- Logging & UI ---
     function appendLog(text, color, isSpell = false) {
-        const style = isSpell ? 'text-purple-400 font-bold' : '';
+        const style = isSpell ? 'text-purple-400 font-bold' : 'text-[#e3e3e3]';
+        const icon = isSpell ? '<i class="fa-solid fa-sparkles text-[10px] mr-1 text-purple-400"></i>' : '';
+        
         if (color === 'w') {
-            $('#move-history').append(`<div class="flex py-1 border-b border-[#3f3e3b]"><div class="w-8 text-muted">${moveNum}.</div><div class="w-1/2 ${style}">${text}</div><div class="w-1/2" id="black-move-${moveNum}"></div></div>`);
+            $('#move-history').append(`<div class="flex py-1.5 border-b border-[#3f3e3b]"><div class="w-8 text-muted">${moveNum}.</div><div class="w-1/2 ${style}">${icon}${text}</div><div class="w-1/2 text-right text-muted" id="black-move-${moveNum}">...</div></div>`);
         } else {
             const el = document.getElementById(`black-move-${moveNum}`);
-            if (el) el.innerHTML = `<span class="${style}">${text}</span>`;
-            else $('#move-history').append(`<div class="flex py-1 border-b border-[#3f3e3b]"><div class="w-8 text-muted">${moveNum}.</div><div class="w-1/2"></div><div class="w-1/2 ${style}">${text}</div></div>`);
+            if (el) {
+                el.innerHTML = `<span class="${style}">${icon}${text}</span>`;
+                el.classList.remove('text-muted');
+                el.classList.add('text-left'); 
+            }
+            else {
+                $('#move-history').append(`<div class="flex py-1.5 border-b border-[#3f3e3b]"><div class="w-8 text-muted">${moveNum}.</div><div class="w-1/2"></div><div class="w-1/2 ${style}">${icon}${text}</div></div>`);
+            }
             moveNum++;
         }
         const hist = document.getElementById('move-history');
@@ -678,8 +683,6 @@ HTML_PAYLOAD = r'''
 
     function updateUI() {
         const turn = game.turn();
-        
-        // 1. Board Status
         const files = ['a','b','c','d','e','f','g','h'];
         const ranks = ['8','7','6','5','4','3','2','1'];
         let legalMoves = selectedSquare ? game.moves({ square: selectedSquare, verbose: true }) : [];
@@ -718,17 +721,29 @@ HTML_PAYLOAD = r'''
             }
         }
 
-        // 2. Turn Indicators
         const isMy = turn === myColor;
-        document.getElementById('turn-indicator').innerText = isMy ? "YOUR TURN" : "OPPONENT'S TURN";
-        document.getElementById('turn-indicator').className = `text-[10px] font-bold px-2 py-1 rounded ${isMy ? 'bg-[#81b64c] text-black' : 'bg-[#1f1e1b] text-muted'}`;
-        
-        document.getElementById('my-status').innerText = isMy ? 'Thinking...' : 'Waiting...';
-        document.getElementById('opp-status').innerText = !isMy ? 'Thinking...' : 'Waiting...';
-        document.getElementById('my-status').className = `text-xs ${isMy ? 'text-[#81b64c]' : 'text-muted'}`;
-        document.getElementById('opp-status').className = `text-xs ${!isMy ? 'text-[#81b64c]' : 'text-muted'}`;
+        const myStatus = document.getElementById('my-status');
+        const oppStatus = document.getElementById('opp-status');
+        const turnIndicator = document.getElementById('turn-indicator');
 
-        // 3. Spells
+        if (gameReady) {
+            if (isMy) {
+                turnIndicator.innerText = "YOUR TURN";
+                turnIndicator.className = "text-[10px] font-bold px-2 py-1 rounded bg-[#81b64c] text-black shadow";
+                myStatus.innerText = "YOUR TURN";
+                myStatus.className = "text-xs font-bold bg-[#81b64c] text-black px-3 py-1.5 rounded-full shadow";
+                oppStatus.innerText = "Waiting";
+                oppStatus.className = "text-xs text-muted font-semibold bg-[#1f1e1b] px-3 py-1.5 rounded-full";
+            } else {
+                turnIndicator.innerText = "OPPONENT'S TURN";
+                turnIndicator.className = "text-[10px] font-bold px-2 py-1 rounded bg-[#1f1e1b] text-muted";
+                myStatus.innerText = "Waiting";
+                myStatus.className = "text-xs text-muted font-semibold bg-[#1f1e1b] px-3 py-1.5 rounded-full";
+                oppStatus.innerText = "THINKING";
+                oppStatus.className = "text-xs font-bold bg-[#81b64c] text-black px-3 py-1.5 rounded-full shadow";
+            }
+        }
+
         const handContainer = document.getElementById('spells-container');
         handContainer.innerHTML = '';
         
@@ -737,17 +752,16 @@ HTML_PAYLOAD = r'''
                 const isUsed = usedSpells.has(spell.id);
                 const isActive = activeSpell && activeSpell.id === spell.id;
                 
-                let borderClass = 'border-[#3f3e3b]';
-                if (spell.rarity === 'Legendary') borderClass = 'border-b-4 border-yellow-500';
-                if (spell.rarity === 'Rare') borderClass = 'border-b-4 border-purple-500';
-                if (spell.rarity === 'Common') borderClass = 'border-b-4 border-gray-400';
+                let borderClass = 'border-[#3f3e3b] text-gray-400';
+                if (spell.rarity === 'Legendary') borderClass = 'border-b-4 border-yellow-500 text-yellow-400';
+                if (spell.rarity === 'Rare') borderClass = 'border-b-4 border-purple-500 text-purple-400';
 
                 const card = document.createElement('div');
-                card.className = `spell-card flex-shrink-0 w-[100px] p-2 rounded-lg bg-[#1f1e1b] border ${borderClass} ${!isUsed && isMyTurn() ? 'cursor-pointer' : ''} flex flex-col items-center text-center ${isUsed ? 'used' : ''} ${isActive ? 'active' : ''}`;
+                card.className = `spell-card p-3 rounded-xl bg-[#1a1917] border ${borderClass} ${!isUsed && isMyTurn() ? 'cursor-pointer hover:bg-[#201e1c]' : ''} flex flex-col items-center justify-center text-center ${isUsed ? 'used' : ''} ${isActive ? 'active' : ''} shadow-lg`;
                 
                 card.innerHTML = `
-                    <div class="text-2xl mb-1">${spell.icon}</div>
-                    <div class="text-[10px] font-bold leading-tight mb-1">${spell.name}</div>
+                    <div class="text-2xl mb-1 drop-shadow-md"><i class="${spell.icon}"></i></div>
+                    <div class="text-[10px] font-extrabold leading-tight mb-1 text-white tracking-wide">${spell.name}</div>
                     <div class="text-[9px] text-muted leading-tight">${spell.desc}</div>
                 `;
                 
@@ -760,7 +774,7 @@ HTML_PAYLOAD = r'''
                     } else {
                         selectedSquare = null; activeSpell = spell; spellSourceSq = null;
                         const banner = document.getElementById('spell-banner');
-                        document.getElementById('spell-banner-title').innerText = `${spell.icon} ${spell.name}`;
+                        document.getElementById('spell-banner-title').innerHTML = `<i class="${spell.icon}"></i> ${spell.name}`;
                         document.getElementById('spell-banner-desc').innerText = spell.desc;
                         banner.classList.remove('hidden');
                         updateUI();
@@ -801,9 +815,8 @@ HTML_PAYLOAD = r'''
         document.getElementById('captured-top').innerHTML = (myColor==='w' ? capB : capW) + (topAdv ? `<span class="text-xs text-muted ml-1 font-bold">+${topAdv}</span>` : '');
     }
 
-    // --- Socket Listeners ---
     socket.on('connect', () => {
-        socket.emit('join_room', { room });
+        socket.emit('join_room', { room, player_id: playerId });
     });
 
     socket.on('role_assigned', (data) => {
@@ -812,9 +825,16 @@ HTML_PAYLOAD = r'''
         usedSpells = new Set();
         isFlipped = myColor === 'b';
         
-        if (myColor === 'w') { document.getElementById('my-name').innerText = 'You (White)'; document.getElementById('opp-name').innerText = 'Opponent (Black)'; }
-        else if (myColor === 'b') { document.getElementById('my-name').innerText = 'You (Black)'; document.getElementById('opp-name').innerText = 'Opponent (White)'; }
-        else { document.getElementById('my-name').innerText = 'Spectator'; document.getElementById('opp-name').innerText = 'Players'; }
+        if (myColor === 'w') { 
+            document.getElementById('my-name').innerText = 'You (White)'; 
+            document.getElementById('opp-name').innerText = 'Opponent (Black)'; 
+        } else if (myColor === 'b') { 
+            document.getElementById('my-name').innerText = 'You (Black)'; 
+            document.getElementById('opp-name').innerText = 'Opponent (White)'; 
+        } else { 
+            document.getElementById('my-name').innerText = 'Spectator'; 
+            document.getElementById('opp-name').innerText = 'Players'; 
+        }
 
         buildBoardDOM();
         game.load(data.snapshot.fen);
@@ -829,6 +849,7 @@ HTML_PAYLOAD = r'''
             document.getElementById('waiting-overlay').style.display = 'flex';
             gameReady = false;
         }
+        updateUI();
     });
 
     socket.on('game_ready', (state) => {
