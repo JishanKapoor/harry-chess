@@ -4,11 +4,12 @@ from flask import Flask, render_template_string, request
 from flask_socketio import SocketIO, join_room, leave_room, emit
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'wizard_chess_secret_v5')
+app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'wizard_chess_secret_vfinal')
 socketio = SocketIO(app, cors_allowed_origins='*', async_mode='threading')
 
 START_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1'
 
+# 100% FontAwesome Icons - No Emojis
 SPELLS = [
     {'id': 'avada', 'name': 'Avada Kedavra', 'rarity': 'Legendary', 'icon': 'fa-solid fa-bolt', 'type': 'enemy', 'desc': 'Click an enemy piece to destroy it.'},
     {'id': 'time', 'name': 'Time-Turner', 'rarity': 'Legendary', 'icon': 'fa-solid fa-hourglass-half', 'type': 'instant', 'desc': 'Rewind the board.'},
@@ -23,10 +24,6 @@ SPELLS = [
 ]
 
 ROOMS = {}
-SID_TO_ROOM = {}
-
-def opp(color: str) -> str:
-    return 'b' if color == 'w' else 'w'
 
 def fen_side_to_move(fen: str) -> str:
     try:
@@ -48,11 +45,9 @@ def get_room(room_id: str):
             'fen': START_FEN,
             'turn': 'w',
             'history': [START_FEN],
-            'players': {'w': None, 'b': None}, # Uses sessionStorage player_id
-            'sids': {'w': None, 'b': None},    # Uses current connection sid
+            'player_ids': {'w': None, 'b': None}, # Uses localStorage UUIDs (Persistent)
             'hands': {'w': None, 'b': None},
-            'used': {'w': set(), 'b': set()},
-            'sid_to_color': {},
+            'used': {'w': set(), 'b': set()}
         }
     return ROOMS[room_id]
 
@@ -63,9 +58,7 @@ def snapshot(room_id: str):
         'room': room_id,
         'fen': room['fen'],
         'turn': room['turn'],
-        'white_connected': room['players']['w'] is not None,
-        'black_connected': room['players']['b'] is not None,
-        'started': room['players']['w'] is not None and room['players']['b'] is not None,
+        'started': room['player_ids']['w'] is not None and room['player_ids']['b'] is not None,
     }
 
 @app.route('/')
@@ -76,146 +69,107 @@ def index():
 def handle_join(data):
     room_id = data.get('room')
     player_id = data.get('player_id') 
-    if not room_id or not player_id:
-        return
+    if not room_id or not player_id: return
 
     room = get_room(room_id)
 
-    # Assign roles accurately based on unique session ID
+    # Bulletproof persistent role assignment
     color = 's'
-    if room['players']['w'] == player_id:
+    if room['player_ids']['w'] == player_id:
         color = 'w'
-    elif room['players']['b'] == player_id:
+    elif room['player_ids']['b'] == player_id:
         color = 'b'
-    elif room['players']['w'] is None:
+    elif room['player_ids']['w'] is None:
         color = 'w'
-        room['players']['w'] = player_id
-    elif room['players']['b'] is None:
+        room['player_ids']['w'] = player_id
+    elif room['player_ids']['b'] is None:
         color = 'b'
-        room['players']['b'] = player_id
+        room['player_ids']['b'] = player_id
 
     join_room(room_id)
-    SID_TO_ROOM[request.sid] = room_id
-    room['sid_to_color'][request.sid] = color
 
     if color in ('w', 'b'):
-        room['sids'][color] = request.sid
         if room['hands'][color] is None:
             room['hands'][color] = fresh_hand()
 
+    # Inform the connecting user of their state
     emit('role_assigned', {
         'color': color,
         'hand': room['hands'].get(color, []) if color in ('w', 'b') else [],
         'snapshot': snapshot(room_id),
     }, to=request.sid)
 
+    # Inform the whole room of the current state
     emit('room_state', snapshot(room_id), to=room_id)
-    if room['players']['w'] is not None and room['players']['b'] is not None:
-        emit('game_ready', snapshot(room_id), to=room_id)
 
 @socketio.on('standard_move')
 def handle_standard_move(data):
     room_id = data.get('room')
-    if not room_id or room_id not in ROOMS:
-        return
+    player_id = data.get('player_id')
+    if not room_id or room_id not in ROOMS: return
 
     room = ROOMS[room_id]
-    color = room['sid_to_color'].get(request.sid)
-    if color not in ('w', 'b'):
-        return
-
-    if room['players']['w'] is None or room['players']['b'] is None:
-        emit('action_denied', {'reason': 'Waiting for both players.', 'snapshot': snapshot(room_id)}, to=request.sid)
-        return
-
-    if room['turn'] != color:
-        emit('action_denied', {'reason': 'It is not your turn.', 'snapshot': snapshot(room_id)}, to=request.sid)
-        return
-
-    base_fen = data.get('base_fen')
-    new_fen = data.get('fen')
+    color = 'w' if room['player_ids']['w'] == player_id else ('b' if room['player_ids']['b'] == player_id else None)
     
-    # Update game state on server
+    if not color or room['turn'] != color: return
+
+    new_fen = data.get('fen')
     room['fen'] = new_fen
     room['turn'] = fen_side_to_move(new_fen)
     room['history'].append(new_fen)
 
-    # Broadcast move explicitly to everyone else in the room
-    emit('standard_move', {
-        'from': data.get('from'),
-        'to': data.get('to'),
+    emit('board_update', {
+        'fen': room['fen'],
         'san': data.get('san'),
         'color': color,
-        'fen': room['fen'],
         'turn': room['turn'],
-    }, to=room_id, include_self=False)
+        'is_spell': False
+    }, to=room_id)
 
 @socketio.on('spell_effect')
 def handle_spell_effect(data):
     room_id = data.get('room')
-    if not room_id or room_id not in ROOMS:
-        return
+    player_id = data.get('player_id')
+    if not room_id or room_id not in ROOMS: return
 
     room = ROOMS[room_id]
-    color = room['sid_to_color'].get(request.sid)
-    if color not in ('w', 'b'):
-        return
-
-    if room['turn'] != color:
-        emit('action_denied', {'reason': 'It is not your turn.', 'snapshot': snapshot(room_id)}, to=request.sid)
-        return
+    color = 'w' if room['player_ids']['w'] == player_id else ('b' if room['player_ids']['b'] == player_id else None)
+    
+    if not color or room['turn'] != color: return
 
     spell_id = data.get('spell_id')
-    if spell_id in room['used'][color]:
-        emit('action_denied', {'reason': 'Spell already used.', 'snapshot': snapshot(room_id)}, to=request.sid)
-        return
+    if spell_id in room['used'][color]: return
 
     consume_turn = bool(data.get('consume_turn', True))
     new_fen = data.get('fen')
 
     if spell_id == 'time':
-        if len(room['history']) < 2:
-            emit('action_denied', {'reason': 'Cannot rewind further.', 'snapshot': snapshot(room_id)}, to=request.sid)
-            return
+        if len(room['history']) < 2: return
         room['history'].pop() 
         new_fen = room['history'][-1]
         consume_turn = True
 
     if spell_id == 'expelliarmus':
         consume_turn = False
-        if not new_fen: new_fen = room['fen']
+        new_fen = room['fen']
 
     room['used'][color].add(spell_id)
     room['fen'] = new_fen
     if consume_turn:
         room['turn'] = fen_side_to_move(new_fen)
-        
+    
     if spell_id != 'time':
         room['history'].append(new_fen)
 
-    emit('spell_effect', {
-        'spell_id': spell_id,
-        'name': data.get('name', spell_id),
+    emit('board_update', {
         'fen': room['fen'],
-        'consume_turn': consume_turn,
+        'spell_id': spell_id,
+        'san': data.get('log', ''),
         'color': color,
         'turn': room['turn'],
-        'log': data.get('log', ''),
-    }, to=room_id, include_self=False)
-
-@socketio.on('disconnect')
-def handle_disconnect():
-    room_id = SID_TO_ROOM.pop(request.sid, None)
-    if not room_id or room_id not in ROOMS:
-        return
-    room = ROOMS[room_id]
-    color = room['sid_to_color'].pop(request.sid, None)
-    if color in ('w', 'b'):
-        room['sids'][color] = None
-    try:
-        leave_room(room_id)
-    except Exception:
-        pass
+        'is_spell': True,
+        'used_spell_id': spell_id
+    }, to=room_id)
 
 
 HTML_PAYLOAD = r'''
@@ -259,13 +213,13 @@ HTML_PAYLOAD = r'''
             pointer-events: none;
         }
         .move-dot {
-            width: 30%; height: 30%; border-radius: 50%;
-            background-color: rgba(0, 0, 0, 0.2);
+            width: 32%; height: 32%; border-radius: 50%;
+            background-color: rgba(0, 0, 0, 0.25);
             position: absolute; pointer-events: none;
         }
         .capture-dot {
             width: 85%; height: 85%; border-radius: 50%;
-            border: 6px solid rgba(0, 0, 0, 0.2);
+            border: 6px solid rgba(0, 0, 0, 0.25);
             position: absolute; background: transparent; pointer-events: none;
         }
 
@@ -299,57 +253,34 @@ HTML_PAYLOAD = r'''
         ::-webkit-scrollbar-thumb { background: #4b4845; border-radius: 4px; }
         
         .spell-card { transition: all 0.2s; position: relative; overflow: hidden; }
-        .spell-card::before {
-            content: ''; position: absolute; inset: 0; background: linear-gradient(180deg, rgba(255,255,255,0.05) 0%, transparent 100%); pointer-events: none;
-        }
+        .spell-card::before { content: ''; position: absolute; inset: 0; background: linear-gradient(180deg, rgba(255,255,255,0.05) 0%, transparent 100%); pointer-events: none; }
         .spell-card.active { border-color: #81b64c; box-shadow: 0 0 15px rgba(129, 182, 76, 0.4); transform: translateY(-4px); }
         .spell-card.used { opacity: 0.25; filter: grayscale(1); pointer-events: none; }
         
-        .toast {
-            position: fixed; top: 20px; left: 50%; transform: translateX(-50%);
-            background: #262421; border: 1px solid #81b64c; padding: 12px 24px;
-            border-radius: 8px; box-shadow: 0 8px 30px rgba(0,0,0,0.8);
-            z-index: 1000; display: none; font-weight: bold; text-align: center;
-        }
-
-        .overlay {
-            position: absolute; inset: 0; background: rgba(0,0,0,0.7);
-            display: flex; flex-direction: column; justify-content: center; align-items: center;
-            z-index: 50; backdrop-filter: blur(4px);
-        }
+        .overlay { position: absolute; inset: 0; background: rgba(0,0,0,0.7); display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 50; backdrop-filter: blur(4px); }
         
-        /* Board Auto-scaling */
-        .board-wrapper {
-            width: 100%;
-            height: 100%;
-            max-width: 85vh; /* Prevents overflow on desktop */
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            margin: 0 auto;
-        }
+        /* Tight Full-Screen Chess Layout */
+        .board-wrapper { width: 100%; height: 100%; max-width: 85vh; display: flex; flex-direction: column; justify-content: center; margin: 0 auto; }
     </style>
 </head>
 <body class="flex flex-col lg:flex-row h-screen">
 
-    <div id="toast" class="toast text-white">Message</div>
-
     <!-- MAIN BOARD AREA -->
     <div class="flex-grow flex flex-col justify-center p-2 lg:p-4 bg-[#302e2b] overflow-hidden">
-        <div class="board-wrapper gap-1.5 lg:gap-3">
+        <div class="board-wrapper gap-1.5 lg:gap-3 relative">
             
             <!-- Top Player (Opponent) -->
-            <div class="flex justify-between items-center bg-[#262421] px-3 py-2 rounded shadow-md border border-[#3f3e3b]">
+            <div class="flex justify-between items-center px-2">
                 <div class="flex items-center gap-3">
-                    <div class="w-10 h-10 bg-[#1f1e1b] rounded flex items-center justify-center shadow-inner overflow-hidden border border-[#3f3e3b]">
-                        <img src="https://images.chesscomfiles.com/chess-themes/pieces/neo/150/bp.png" class="w-8 h-8 object-contain drop-shadow-lg" id="opp-avatar">
+                    <div class="w-10 h-10 bg-[#1f1e1b] rounded flex items-center justify-center overflow-hidden border border-[#3f3e3b]">
+                        <img src="https://images.chesscomfiles.com/chess-themes/pieces/neo/150/bp.png" class="w-8 h-8 object-contain" id="opp-avatar">
                     </div>
                     <div>
                         <div class="font-bold text-sm tracking-wide text-white" id="opp-name">Opponent</div>
                         <div class="flex items-center mt-0.5 min-h-[18px]" id="captured-top"></div>
                     </div>
                 </div>
-                <div class="text-xs font-mono font-bold bg-[#1f1e1b] text-muted px-3 py-2 rounded shadow-inner" id="opp-status">Waiting</div>
+                <div class="text-xs font-mono font-bold bg-[#1f1e1b] text-muted px-3 py-2 rounded" id="opp-status">Waiting</div>
             </div>
 
             <!-- Chess Board -->
@@ -368,26 +299,26 @@ HTML_PAYLOAD = r'''
                     </div>
                 </div>
 
-                <!-- Spell Banner Overlay -->
+                <!-- Spell Guidance Overlay -->
                 <div id="spell-banner" class="hidden absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-gradient-to-r from-purple-700 to-purple-500 text-white px-6 py-4 rounded-xl font-bold text-center z-50 shadow-[0_0_30px_rgba(168,85,247,0.5)] border border-purple-300 w-[85%] max-w-[320px]">
-                    <div id="spell-banner-title" class="text-2xl mb-1 drop-shadow-md">SPELL</div>
+                    <div id="spell-banner-title" class="text-xl mb-1 drop-shadow-md">SPELL</div>
                     <div id="spell-banner-desc" class="text-sm font-medium text-purple-100 mb-4">Action</div>
                     <button onclick="cancelSpell()" class="text-sm bg-black bg-opacity-40 hover:bg-opacity-60 px-4 py-2 rounded-lg w-full transition uppercase tracking-wider font-bold">Cancel</button>
                 </div>
             </div>
 
             <!-- Bottom Player (You) -->
-            <div class="flex justify-between items-center bg-[#262421] px-3 py-2 rounded shadow-md border border-[#3f3e3b]">
+            <div class="flex justify-between items-center px-2">
                 <div class="flex items-center gap-3">
-                    <div class="w-10 h-10 bg-[#1f1e1b] rounded flex items-center justify-center shadow-inner overflow-hidden border border-[#3f3e3b]">
-                        <img src="https://images.chesscomfiles.com/chess-themes/pieces/neo/150/wp.png" class="w-8 h-8 object-contain drop-shadow-lg" id="my-avatar">
+                    <div class="w-10 h-10 bg-[#1f1e1b] rounded flex items-center justify-center overflow-hidden border border-[#3f3e3b]">
+                        <img src="https://images.chesscomfiles.com/chess-themes/pieces/neo/150/wp.png" class="w-8 h-8 object-contain" id="my-avatar">
                     </div>
                     <div>
                         <div class="font-bold text-sm tracking-wide text-white" id="my-name">You</div>
                         <div class="flex items-center mt-0.5 min-h-[18px]" id="captured-bottom"></div>
                     </div>
                 </div>
-                <div class="text-xs font-mono font-bold bg-[#81b64c] text-black px-3 py-2 rounded shadow" id="my-status">Thinking</div>
+                <div class="text-xs font-mono font-bold bg-[#81b64c] text-black px-3 py-2 rounded" id="my-status">Thinking</div>
             </div>
 
         </div>
@@ -399,44 +330,32 @@ HTML_PAYLOAD = r'''
         <!-- Spell Grimoire -->
         <div class="p-4 border-b border-[#3f3e3b] bg-[#211f1c]">
             <div class="flex justify-between items-center mb-3">
-                <h3 class="font-bold text-xs text-muted uppercase tracking-widest"><i class="fa-solid fa-book-journal-whills mr-1"></i> Your Grimoire</h3>
+                <h3 class="font-bold text-xs text-muted uppercase tracking-widest"><i class="fa-solid fa-book-journal-whills mr-2"></i>Your Grimoire</h3>
                 <span id="turn-indicator" class="text-[10px] font-bold px-2 py-1 rounded bg-[#1f1e1b] text-muted">WAITING</span>
             </div>
-            <!-- Flex grid for spells, scrolls horizontally on small screens -->
             <div id="spells-container" class="flex lg:grid lg:grid-cols-3 gap-2 overflow-x-auto lg:overflow-y-auto lg:max-h-[220px] custom-scrollbar pb-2 lg:pb-0 pr-1">
-                <!-- Spells injected here via JS -->
+                <!-- Spells injected here -->
             </div>
         </div>
 
         <!-- Match History -->
         <div class="px-4 py-3 border-b border-[#3f3e3b] flex justify-between items-center bg-[#262421]">
-            <span class="font-bold text-xs text-muted uppercase tracking-widest"><i class="fa-solid fa-list-ul mr-1"></i> Match Log</span>
-            <button onclick="document.getElementById('modal-resign').style.display='flex';" class="text-xs text-red-400 hover:text-red-300 transition font-bold"><i class="fa-solid fa-flag"></i> Resign</button>
+            <span class="font-bold text-xs text-muted uppercase tracking-widest"><i class="fa-solid fa-list-ul mr-2"></i>Match Log</span>
+            <button onclick="window.location.href='/';" class="text-xs text-red-400 hover:text-red-300 transition font-bold"><i class="fa-solid fa-flag mr-1"></i>Resign</button>
         </div>
         <div class="flex-grow overflow-y-auto p-4 custom-scrollbar bg-[#1f1e1b] font-mono text-sm shadow-inner" id="move-history">
             <!-- Moves injected here -->
         </div>
     </div>
 
-    <!-- Custom Resign Modal -->
-    <div id="modal-resign" class="overlay hidden">
-        <div class="bg-[#262421] border border-[#3f3e3b] p-6 rounded-xl text-center max-w-[85%] shadow-2xl">
-            <h2 class="text-xl font-bold mb-4 text-white">Resign Game?</h2>
-            <div class="flex gap-3 justify-center">
-                <button onclick="document.getElementById('modal-resign').style.display='none';" class="bg-[#3f3e3b] text-white font-bold px-6 py-2 rounded-lg hover:bg-[#4b4845]">Cancel</button>
-                <button onclick="window.location.href='/';" class="bg-red-500 text-white font-bold px-6 py-2 rounded-lg hover:bg-red-400">Resign</button>
-            </div>
-        </div>
-    </div>
-
 <script>
     const socket = io();
     
-    // CRITICAL FIX: Use sessionStorage so multiple tabs in the same browser act as unique players!
-    let playerId = sessionStorage.getItem('wizard_chess_id');
+    // CRITICAL FIX: Bulletproof Persistent ID. If you refresh, close tab, or sleep phone, you stay you.
+    let playerId = localStorage.getItem('wizard_chess_id');
     if (!playerId) {
         playerId = Math.random().toString(36).substring(2, 15);
-        sessionStorage.setItem('wizard_chess_id', playerId);
+        localStorage.setItem('wizard_chess_id', playerId);
     }
 
     const room = (() => {
@@ -451,9 +370,8 @@ HTML_PAYLOAD = r'''
 
     document.getElementById('share-link').value = location.href;
     function copyLink() {
-        const input = document.getElementById('share-link');
-        input.select(); document.execCommand('copy');
-        showToast("Link Copied!");
+        document.getElementById('share-link').select(); 
+        document.execCommand('copy');
     }
 
     const sfxMove = new Audio('https://images.chesscomfiles.com/chess-themes/sounds/_MP3_/default/move-self.mp3');
@@ -471,10 +389,9 @@ HTML_PAYLOAD = r'''
     let selectedSquare = null;
     let activeSpell = null;
     let spellSourceSq = null;
-    
     let moveNum = 1;
 
-    // Build the grid purely with CSS Grid for 0 tearing and flawless resizing.
+    // DOM Grid Creation (Zero Flickering)
     function buildBoardDOM() {
         const boardEl = document.getElementById('board');
         boardEl.innerHTML = '';
@@ -492,7 +409,6 @@ HTML_PAYLOAD = r'''
                 const sqEl = document.createElement('div');
                 sqEl.className = `relative flex items-center justify-center ${isLight ? 'sq-light' : 'sq-dark'}`;
                 sqEl.id = `sq-${sqName}`;
-                // Direct tap-to-move implementation. Flawless on iPad/Mobile/Laptop.
                 sqEl.onclick = () => handleSquareClick(sqName);
                 
                 const highlight = document.createElement('div');
@@ -512,13 +428,6 @@ HTML_PAYLOAD = r'''
         }
     }
 
-    function showToast(msg) {
-        const t = document.getElementById('toast');
-        t.innerHTML = `<i class="fa-solid fa-circle-info mr-2"></i> ${msg}`; 
-        t.style.display = 'block';
-        setTimeout(() => t.style.display = 'none', 2500);
-    }
-
     function isMyTurn() {
         return myColor && myColor !== 's' && gameReady && game.turn() === myColor;
     }
@@ -530,6 +439,7 @@ HTML_PAYLOAD = r'''
         return parts.join(' ');
     }
 
+    // Interactive Tap-to-Move
     function handleSquareClick(sq) {
         if (!gameReady || myColor === 's' || !isMyTurn()) return;
 
@@ -540,23 +450,24 @@ HTML_PAYLOAD = r'''
 
         const p = game.get(sq);
         
-        // 1. Select own piece
+        // 1. Select
         if (p && p.color === myColor) {
             selectedSquare = selectedSquare === sq ? null : sq;
             updateUI();
             return;
         }
 
-        // 2. Make Move
+        // 2. Move
         if (selectedSquare) {
             const baseFen = game.fen();
             const move = game.move({ from: selectedSquare, to: sq, promotion: 'q' });
             if (move) {
                 selectedSquare = null;
-                updateUI(); // Optimistic instant update
-                (move.captured ? sfxCapture : sfxMove).play().catch(()=>{});
-                appendLog(move.san, myColor);
-                socket.emit('standard_move', { room, base_fen: baseFen, from: move.from, to: move.to, san: move.san, color: move.color, fen: game.fen() });
+                updateUI();
+                socket.emit('standard_move', { 
+                    room, player_id: playerId, base_fen: baseFen, 
+                    from: move.from, to: move.to, san: move.san, fen: game.fen() 
+                });
             } else {
                 selectedSquare = null;
                 updateUI();
@@ -564,7 +475,7 @@ HTML_PAYLOAD = r'''
         }
     }
 
-    // Process spells and explicitly bypass normal chess rules
+    // Spell Execution Logic (Overrides Engine)
     function processSpellClick(sq) {
         const p = game.get(sq);
         const opp = myColor === 'w' ? 'b' : 'w';
@@ -578,7 +489,7 @@ HTML_PAYLOAD = r'''
                     if (activeSpell.id === 'sectum') game.put({type: 'p', color: opp}, sq);
                     nextFen = switchTurnInFen(game.fen());
                     commitSpellEffect(activeSpell, baseFen, nextFen, true);
-                } else showToast("Select a valid enemy piece.");
+                }
                 break;
                 
             case 'any':
@@ -601,7 +512,7 @@ HTML_PAYLOAD = r'''
                     game.put({type: 'n', color: myColor}, sq);
                     nextFen = switchTurnInFen(game.fen());
                     commitSpellEffect(activeSpell, baseFen, nextFen, true);
-                } else showToast("Select your own Pawn.");
+                }
                 break;
 
             case 'drag_own':
@@ -611,17 +522,17 @@ HTML_PAYLOAD = r'''
                     if (p && p.color === reqColor) {
                         spellSourceSq = sq;
                         updateUI();
-                    } else showToast("Select a valid piece.");
+                    }
                 } else {
                     const source = spellSourceSq;
                     const fDist = Math.abs(source.charCodeAt(0) - sq.charCodeAt(0));
                     const rDist = Math.abs(parseInt(source[1]) - parseInt(sq[1]));
                     
-                    if (activeSpell.id === 'accio' && (fDist > 2 || rDist > 2)) return showToast("Too far (max 2 sq).");
-                    if (activeSpell.id === 'leviosa' && ((fDist > 1 || rDist > 1) || p)) return showToast("Must be adjacent empty square.");
+                    if (activeSpell.id === 'accio' && (fDist > 2 || rDist > 2)) return;
+                    if (activeSpell.id === 'leviosa' && ((fDist > 1 || rDist > 1) || p)) return;
                     if (activeSpell.id === 'alohomora') {
                         const isOwnHalf = myColor === 'w' ? parseInt(sq[1]) <= 4 : parseInt(sq[1]) >= 5;
-                        if (!isOwnHalf || p) return showToast("Must be empty square on your half.");
+                        if (!isOwnHalf || p) return;
                     }
                     
                     if (activeSpell.id === 'imperio') {
@@ -632,7 +543,6 @@ HTML_PAYLOAD = r'''
                             commitSpellEffect(activeSpell, baseFen, nextFen, true, `IMPERIO: ${move.san}`);
                         } else {
                             game.load(baseFen); 
-                            showToast("Illegal move for that piece.");
                             spellSourceSq = null; updateUI();
                         }
                         return;
@@ -648,28 +558,13 @@ HTML_PAYLOAD = r'''
         }
     }
 
-    function processInstantSpell(spell) {
-        const baseFen = game.fen();
-        if (spell.id === 'time') {
-            commitSpellEffect(spell, baseFen, null, true); 
-        }
-        if (spell.id === 'expelliarmus') {
-            commitSpellEffect(spell, baseFen, baseFen, false); 
-        }
-    }
-
     function commitSpellEffect(spell, baseFen, newFen, consumeTurn, customLog = null) {
         usedSpells.add(spell.id);
-        const logStr = customLog || spell.name.toUpperCase();
-        
         socket.emit('spell_effect', { 
-            room, base_fen: baseFen, spell_id: spell.id, name: spell.name, 
-            fen: newFen, consume_turn: consumeTurn, log: logStr 
+            room, player_id: playerId, base_fen: baseFen, 
+            spell_id: spell.id, name: spell.name, fen: newFen, 
+            consume_turn: consumeTurn, log: customLog || spell.name.toUpperCase() 
         });
-
-        if (newFen) game.load(newFen);
-        sfxSpell.play().catch(()=>{});
-        appendLog(logStr, myColor, true);
         cancelSpell();
     }
 
@@ -681,7 +576,7 @@ HTML_PAYLOAD = r'''
 
     function appendLog(text, color, isSpell = false) {
         const style = isSpell ? 'text-purple-400 font-bold' : 'text-[#e3e3e3]';
-        const icon = isSpell ? '<i class="fa-solid fa-sparkles text-[10px] mr-1 text-purple-400"></i>' : '';
+        const icon = isSpell ? '<i class="fa-solid fa-wand-magic-sparkles text-[10px] mr-1 text-purple-400"></i>' : '';
         
         if (color === 'w') {
             $('#move-history').append(`<div class="flex py-1.5 border-b border-[#3f3e3b]"><div class="w-8 text-muted">${moveNum}.</div><div class="w-1/2 ${style}">${icon}${text}</div><div class="w-1/2 text-right text-muted" id="black-move-${moveNum}">...</div></div>`);
@@ -691,8 +586,7 @@ HTML_PAYLOAD = r'''
                 el.innerHTML = `<span class="${style}">${icon}${text}</span>`;
                 el.classList.remove('text-muted');
                 el.classList.add('text-left'); 
-            }
-            else {
+            } else {
                 $('#move-history').append(`<div class="flex py-1.5 border-b border-[#3f3e3b]"><div class="w-8 text-muted">${moveNum}.</div><div class="w-1/2"></div><div class="w-1/2 ${style}">${icon}${text}</div></div>`);
             }
             moveNum++;
@@ -747,21 +641,12 @@ HTML_PAYLOAD = r'''
         const turnIndicator = document.getElementById('turn-indicator');
 
         if (gameReady) {
-            if (isMy) {
-                turnIndicator.innerText = "YOUR TURN";
-                turnIndicator.className = "text-[10px] font-bold px-2 py-1 rounded bg-[#81b64c] text-black shadow";
-                myStatus.innerText = "YOUR TURN";
-                myStatus.className = "text-xs font-mono font-bold bg-[#81b64c] text-black px-3 py-2 rounded shadow";
-                oppStatus.innerText = "Waiting";
-                oppStatus.className = "text-xs font-mono font-bold bg-[#1f1e1b] text-muted px-3 py-2 rounded shadow-inner";
-            } else {
-                turnIndicator.innerText = "OPPONENT'S TURN";
-                turnIndicator.className = "text-[10px] font-bold px-2 py-1 rounded bg-[#1f1e1b] text-muted";
-                myStatus.innerText = "Waiting";
-                myStatus.className = "text-xs font-mono font-bold bg-[#1f1e1b] text-muted px-3 py-2 rounded shadow-inner";
-                oppStatus.innerText = "THINKING";
-                oppStatus.className = "text-xs font-mono font-bold bg-[#81b64c] text-black px-3 py-2 rounded shadow";
-            }
+            turnIndicator.innerText = isMy ? "YOUR TURN" : "OPPONENT'S TURN";
+            turnIndicator.className = `text-[10px] font-bold px-2 py-1 rounded shadow ${isMy ? 'bg-[#81b64c] text-black' : 'bg-[#1f1e1b] text-muted'}`;
+            myStatus.innerText = isMy ? "Thinking" : "Waiting";
+            myStatus.className = `text-xs font-mono font-bold px-3 py-2 rounded shadow ${isMy ? 'bg-[#81b64c] text-black' : 'bg-[#1f1e1b] text-muted'}`;
+            oppStatus.innerText = !isMy ? "Thinking" : "Waiting";
+            oppStatus.className = `text-xs font-mono font-bold px-3 py-2 rounded shadow ${!isMy ? 'bg-[#81b64c] text-black' : 'bg-[#1f1e1b] text-muted'}`;
         }
 
         const handContainer = document.getElementById('spells-container');
@@ -790,11 +675,13 @@ HTML_PAYLOAD = r'''
                     if (isActive) { cancelSpell(); return; }
                     
                     if (spell.type === 'instant') {
-                        processInstantSpell(spell);
+                        const baseFen = game.fen();
+                        usedSpells.add(spell.id);
+                        socket.emit('spell_effect', { room, player_id: playerId, base_fen: baseFen, spell_id: spell.id, name: spell.name, fen: baseFen, consume_turn: false, log: spell.name.toUpperCase() });
                     } else {
                         selectedSquare = null; activeSpell = spell; spellSourceSq = null;
                         const banner = document.getElementById('spell-banner');
-                        document.getElementById('spell-banner-title').innerHTML = `<i class="${spell.icon} mr-2"></i> ${spell.name}`;
+                        document.getElementById('spell-banner-title').innerHTML = `<i class="${spell.icon} mr-2"></i>${spell.name}`;
                         document.getElementById('spell-banner-desc').innerText = spell.desc;
                         banner.classList.remove('hidden');
                         updateUI();
@@ -803,7 +690,6 @@ HTML_PAYLOAD = r'''
                 handContainer.appendChild(card);
             });
         }
-
         calcMaterial();
     }
 
@@ -835,6 +721,7 @@ HTML_PAYLOAD = r'''
         document.getElementById('captured-top').innerHTML = (myColor==='w' ? capB : capW) + (topAdv ? `<span class="text-xs text-muted ml-1 font-bold">+${topAdv}</span>` : '');
     }
 
+    // --- Core Server Communication ---
     socket.on('connect', () => {
         socket.emit('join_room', { room, player_id: playerId });
     });
@@ -855,9 +742,6 @@ HTML_PAYLOAD = r'''
             document.getElementById('my-avatar').src = 'https://images.chesscomfiles.com/chess-themes/pieces/neo/150/bp.png';
             document.getElementById('opp-name').innerText = 'Opponent (White)'; 
             document.getElementById('opp-avatar').src = 'https://images.chesscomfiles.com/chess-themes/pieces/neo/150/wp.png';
-        } else { 
-            document.getElementById('my-name').innerText = 'Spectator'; 
-            document.getElementById('opp-name').innerText = 'Players'; 
         }
 
         buildBoardDOM();
@@ -868,43 +752,22 @@ HTML_PAYLOAD = r'''
     socket.on('room_state', (state) => {
         if (state.started) {
             document.getElementById('waiting-overlay').style.display = 'none';
+            if (!gameReady) sfxStart.play().catch(()=>{});
             gameReady = true;
-        } else {
-            document.getElementById('waiting-overlay').style.display = 'flex';
-            gameReady = false;
         }
         updateUI();
     });
 
-    socket.on('game_ready', (state) => {
-        document.getElementById('waiting-overlay').style.display = 'none';
-        gameReady = true;
-        sfxStart.play().catch(()=>{});
-        showToast("Match Started!");
-        updateUI();
-    });
-
-    socket.on('standard_move', (data) => {
+    socket.on('board_update', (data) => {
         game.load(data.fen);
-        (data.san.includes('x') ? sfxCapture : sfxMove).play().catch(()=>{});
-        appendLog(data.san, data.color);
-        updateUI();
-    });
-
-    socket.on('spell_effect', (data) => {
-        if (data.fen) game.load(data.fen);
-        sfxSpell.play().catch(()=>{});
-        appendLog(data.log || data.name, data.color, true);
-        if (data.color === myColor) usedSpells.add(data.spell_id);
-        cancelSpell();
-    });
-
-    socket.on('action_denied', (data) => {
-        showToast(data.reason);
-        if (data.snapshot && data.snapshot.fen) {
-            game.load(data.snapshot.fen);
+        if (data.is_spell) {
+            sfxSpell.play().catch(()=>{});
+            if (data.color === myColor) usedSpells.add(data.used_spell_id);
+        } else {
+            (data.san.includes('x') ? sfxCapture : sfxMove).play().catch(()=>{});
         }
-        cancelSpell();
+        appendLog(data.san, data.color, data.is_spell);
+        updateUI();
     });
 
 </script>
