@@ -4,7 +4,7 @@ from flask import Flask, render_template_string, request
 from flask_socketio import SocketIO, join_room, leave_room, emit
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'wizard_chess_secret_v4')
+app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'wizard_chess_secret_v5')
 socketio = SocketIO(app, cors_allowed_origins='*', async_mode='threading')
 
 START_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1'
@@ -48,7 +48,7 @@ def get_room(room_id: str):
             'fen': START_FEN,
             'turn': 'w',
             'history': [START_FEN],
-            'players': {'w': None, 'b': None}, # Uses persistent player_id
+            'players': {'w': None, 'b': None}, # Uses sessionStorage player_id
             'sids': {'w': None, 'b': None},    # Uses current connection sid
             'hands': {'w': None, 'b': None},
             'used': {'w': set(), 'b': set()},
@@ -75,13 +75,13 @@ def index():
 @socketio.on('join_room')
 def handle_join(data):
     room_id = data.get('room')
-    player_id = data.get('player_id') # Persistent ID prevents mobile dropouts
+    player_id = data.get('player_id') 
     if not room_id or not player_id:
         return
 
     room = get_room(room_id)
 
-    # Reconnect logic to prevent getting stuck as spectator
+    # Assign roles accurately based on unique session ID
     color = 's'
     if room['players']['w'] == player_id:
         color = 'w'
@@ -134,14 +134,13 @@ def handle_standard_move(data):
 
     base_fen = data.get('base_fen')
     new_fen = data.get('fen')
-    if base_fen != room['fen']:
-        emit('action_denied', {'reason': 'Board out of sync. Resyncing.', 'snapshot': snapshot(room_id)}, to=request.sid)
-        return
-
+    
+    # Update game state on server
     room['fen'] = new_fen
     room['turn'] = fen_side_to_move(new_fen)
     room['history'].append(new_fen)
 
+    # Broadcast move explicitly to everyone else in the room
     emit('standard_move', {
         'from': data.get('from'),
         'to': data.get('to'),
@@ -209,15 +208,10 @@ def handle_disconnect():
     room_id = SID_TO_ROOM.pop(request.sid, None)
     if not room_id or room_id not in ROOMS:
         return
-
     room = ROOMS[room_id]
     color = room['sid_to_color'].pop(request.sid, None)
     if color in ('w', 'b'):
         room['sids'][color] = None
-
-    # Note: We do NOT wipe room['players'][color] here. 
-    # This allows mobile users to refresh/reconnect and claim their spot using their player_id!
-
     try:
         leave_room(room_id)
     except Exception:
@@ -244,11 +238,13 @@ HTML_PAYLOAD = r'''
             color: #ffffff;
             overscroll-behavior: none;
             margin: 0; padding: 0;
-            overflow: hidden; /* Prevents scrollbars, maximizing screen space */
+            overflow: hidden; 
         }
 
         .bg-panel { background-color: #262421; }
         .text-muted { color: #a7a6a2; }
+        
+        /* Exact Chess.com Board Colors */
         .sq-light { background-color: #ebecd0; }
         .sq-dark { background-color: #739552; }
         
@@ -278,12 +274,11 @@ HTML_PAYLOAD = r'''
             background-repeat: no-repeat; background-position: center;
             position: relative; z-index: 10; cursor: pointer;
             transition: transform 0.05s ease;
-            user-select: none; /* Prevents text highlighting */
-            -webkit-user-drag: none; /* FIX FOR LAPTOPS: Prevents native browser image dragging */
+            user-select: none; 
+            -webkit-user-drag: none; /* CRITICAL FIX: Stops laptop image dragging bug */
         }
         .piece:active { transform: scale(1.1); }
 
-        /* Chess.com Neo Pieces */
         .wP { background-image: url('https://images.chesscomfiles.com/chess-themes/pieces/neo/150/wp.png'); }
         .wN { background-image: url('https://images.chesscomfiles.com/chess-themes/pieces/neo/150/wn.png'); }
         .wB { background-image: url('https://images.chesscomfiles.com/chess-themes/pieces/neo/150/wb.png'); }
@@ -322,38 +317,49 @@ HTML_PAYLOAD = r'''
             display: flex; flex-direction: column; justify-content: center; align-items: center;
             z-index: 50; backdrop-filter: blur(4px);
         }
+        
+        /* Board Auto-scaling */
+        .board-wrapper {
+            width: 100%;
+            height: 100%;
+            max-width: 85vh; /* Prevents overflow on desktop */
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            margin: 0 auto;
+        }
     </style>
 </head>
 <body class="flex flex-col lg:flex-row h-screen">
 
     <div id="toast" class="toast text-white">Message</div>
 
-    <div class="flex-grow flex flex-col items-center justify-center p-2 lg:p-4 w-full lg:w-3/4 h-[65vh] lg:h-full bg-[#302e2b]">
-        <!-- Responsive wrapper: Constrains width by max height to remain perfectly square -->
-        <div class="w-full h-full flex flex-col max-w-[90vh] max-h-[90vh] gap-2 lg:gap-3 justify-center">
+    <!-- MAIN BOARD AREA -->
+    <div class="flex-grow flex flex-col justify-center p-2 lg:p-4 bg-[#302e2b] overflow-hidden">
+        <div class="board-wrapper gap-1.5 lg:gap-3">
             
             <!-- Top Player (Opponent) -->
             <div class="flex justify-between items-center bg-[#262421] px-3 py-2 rounded shadow-md border border-[#3f3e3b]">
                 <div class="flex items-center gap-3">
                     <div class="w-10 h-10 bg-[#1f1e1b] rounded flex items-center justify-center shadow-inner overflow-hidden border border-[#3f3e3b]">
-                        <img src="https://images.chesscomfiles.com/chess-themes/pieces/neo/150/bp.png" class="w-8 h-8 object-contain drop-shadow-lg">
+                        <img src="https://images.chesscomfiles.com/chess-themes/pieces/neo/150/bp.png" class="w-8 h-8 object-contain drop-shadow-lg" id="opp-avatar">
                     </div>
                     <div>
-                        <div class="font-bold text-sm tracking-wide" id="opp-name">Opponent</div>
+                        <div class="font-bold text-sm tracking-wide text-white" id="opp-name">Opponent</div>
                         <div class="flex items-center mt-0.5 min-h-[18px]" id="captured-top"></div>
                     </div>
                 </div>
-                <div class="text-xs text-muted font-semibold bg-[#1f1e1b] px-3 py-1.5 rounded-full" id="opp-status">Connecting</div>
+                <div class="text-xs font-mono font-bold bg-[#1f1e1b] text-muted px-3 py-2 rounded shadow-inner" id="opp-status">Waiting</div>
             </div>
 
-            <!-- Board -->
-            <div class="w-full aspect-square border-4 border-[#262421] rounded shadow-2xl overflow-hidden relative">
-                <div id="board" class="w-full h-full grid grid-cols-8 grid-rows-8 select-none"></div>
+            <!-- Chess Board -->
+            <div class="w-full aspect-square rounded shadow-2xl overflow-hidden relative border-4 border-[#262421]">
+                <div id="board" class="w-full h-full grid grid-cols-8 grid-rows-8 select-none bg-[#739552]"></div>
                 
                 <!-- Waiting Overlay -->
                 <div id="waiting-overlay" class="overlay">
                     <div class="bg-[#262421] border border-[#3f3e3b] p-6 rounded-xl text-center max-w-[85%] shadow-2xl">
-                        <h2 class="text-xl font-bold mb-2 text-white">Match Lobby</h2>
+                        <h2 class="text-xl font-bold mb-2 text-white"><i class="fa-solid fa-chess-knight text-[#81b64c] mr-2"></i>Match Lobby</h2>
                         <p class="text-sm text-muted mb-4">Send this link to a friend to start the match.</p>
                         <div class="flex gap-2">
                             <input type="text" id="share-link" readonly class="w-full bg-[#141312] border border-[#3f3e3b] text-white p-3 rounded-lg text-xs font-mono focus:outline-none">
@@ -362,9 +368,9 @@ HTML_PAYLOAD = r'''
                     </div>
                 </div>
 
-                <!-- Spell Active Overlay -->
+                <!-- Spell Banner Overlay -->
                 <div id="spell-banner" class="hidden absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-gradient-to-r from-purple-700 to-purple-500 text-white px-6 py-4 rounded-xl font-bold text-center z-50 shadow-[0_0_30px_rgba(168,85,247,0.5)] border border-purple-300 w-[85%] max-w-[320px]">
-                    <div id="spell-banner-title" class="text-2xl mb-1 drop-shadow-md"><i class="fa-solid fa-wand-magic-sparkles"></i> SPELL</div>
+                    <div id="spell-banner-title" class="text-2xl mb-1 drop-shadow-md">SPELL</div>
                     <div id="spell-banner-desc" class="text-sm font-medium text-purple-100 mb-4">Action</div>
                     <button onclick="cancelSpell()" class="text-sm bg-black bg-opacity-40 hover:bg-opacity-60 px-4 py-2 rounded-lg w-full transition uppercase tracking-wider font-bold">Cancel</button>
                 </div>
@@ -374,20 +380,21 @@ HTML_PAYLOAD = r'''
             <div class="flex justify-between items-center bg-[#262421] px-3 py-2 rounded shadow-md border border-[#3f3e3b]">
                 <div class="flex items-center gap-3">
                     <div class="w-10 h-10 bg-[#1f1e1b] rounded flex items-center justify-center shadow-inner overflow-hidden border border-[#3f3e3b]">
-                        <img src="https://images.chesscomfiles.com/chess-themes/pieces/neo/150/wp.png" class="w-8 h-8 object-contain drop-shadow-lg">
+                        <img src="https://images.chesscomfiles.com/chess-themes/pieces/neo/150/wp.png" class="w-8 h-8 object-contain drop-shadow-lg" id="my-avatar">
                     </div>
                     <div>
-                        <div class="font-bold text-sm tracking-wide" id="my-name">You</div>
+                        <div class="font-bold text-sm tracking-wide text-white" id="my-name">You</div>
                         <div class="flex items-center mt-0.5 min-h-[18px]" id="captured-bottom"></div>
                     </div>
                 </div>
-                <div class="text-xs font-bold bg-[#81b64c] text-black px-3 py-1.5 rounded-full shadow" id="my-status">Connecting</div>
+                <div class="text-xs font-mono font-bold bg-[#81b64c] text-black px-3 py-2 rounded shadow" id="my-status">Thinking</div>
             </div>
 
         </div>
     </div>
 
-    <div class="w-full lg:w-1/4 xl:w-[420px] bg-[#262421] border-l border-[#3f3e3b] flex flex-col h-[35vh] lg:h-full z-10 shadow-2xl">
+    <!-- SIDEBAR AREA -->
+    <div class="w-full lg:w-[380px] xl:w-[420px] bg-[#262421] border-l border-[#3f3e3b] flex flex-col h-[35vh] lg:h-full z-10 shadow-2xl flex-shrink-0">
         
         <!-- Spell Grimoire -->
         <div class="p-4 border-b border-[#3f3e3b] bg-[#211f1c]">
@@ -395,29 +402,41 @@ HTML_PAYLOAD = r'''
                 <h3 class="font-bold text-xs text-muted uppercase tracking-widest"><i class="fa-solid fa-book-journal-whills mr-1"></i> Your Grimoire</h3>
                 <span id="turn-indicator" class="text-[10px] font-bold px-2 py-1 rounded bg-[#1f1e1b] text-muted">WAITING</span>
             </div>
-            <div id="spells-container" class="grid grid-cols-3 sm:grid-cols-6 lg:grid-cols-3 gap-2 overflow-y-auto max-h-[220px] custom-scrollbar pr-1">
+            <!-- Flex grid for spells, scrolls horizontally on small screens -->
+            <div id="spells-container" class="flex lg:grid lg:grid-cols-3 gap-2 overflow-x-auto lg:overflow-y-auto lg:max-h-[220px] custom-scrollbar pb-2 lg:pb-0 pr-1">
                 <!-- Spells injected here via JS -->
             </div>
         </div>
 
         <!-- Match History -->
-        <div class="px-4 py-3 border-b border-[#3f3e3b] flex justify-between items-center">
+        <div class="px-4 py-3 border-b border-[#3f3e3b] flex justify-between items-center bg-[#262421]">
             <span class="font-bold text-xs text-muted uppercase tracking-widest"><i class="fa-solid fa-list-ul mr-1"></i> Match Log</span>
-            <button onclick="if(confirm('Are you sure you want to resign and leave?')){ window.location.href='/'; }" class="text-xs text-red-400 hover:text-red-300 transition font-bold"><i class="fa-solid fa-flag"></i> Resign</button>
+            <button onclick="document.getElementById('modal-resign').style.display='flex';" class="text-xs text-red-400 hover:text-red-300 transition font-bold"><i class="fa-solid fa-flag"></i> Resign</button>
         </div>
         <div class="flex-grow overflow-y-auto p-4 custom-scrollbar bg-[#1f1e1b] font-mono text-sm shadow-inner" id="move-history">
             <!-- Moves injected here -->
         </div>
     </div>
 
+    <!-- Custom Resign Modal -->
+    <div id="modal-resign" class="overlay hidden">
+        <div class="bg-[#262421] border border-[#3f3e3b] p-6 rounded-xl text-center max-w-[85%] shadow-2xl">
+            <h2 class="text-xl font-bold mb-4 text-white">Resign Game?</h2>
+            <div class="flex gap-3 justify-center">
+                <button onclick="document.getElementById('modal-resign').style.display='none';" class="bg-[#3f3e3b] text-white font-bold px-6 py-2 rounded-lg hover:bg-[#4b4845]">Cancel</button>
+                <button onclick="window.location.href='/';" class="bg-red-500 text-white font-bold px-6 py-2 rounded-lg hover:bg-red-400">Resign</button>
+            </div>
+        </div>
+    </div>
+
 <script>
     const socket = io();
     
-    // Persistent Identity for Mobile dropouts
-    let playerId = localStorage.getItem('wizard_chess_id');
+    // CRITICAL FIX: Use sessionStorage so multiple tabs in the same browser act as unique players!
+    let playerId = sessionStorage.getItem('wizard_chess_id');
     if (!playerId) {
         playerId = Math.random().toString(36).substring(2, 15);
-        localStorage.setItem('wizard_chess_id', playerId);
+        sessionStorage.setItem('wizard_chess_id', playerId);
     }
 
     const room = (() => {
@@ -455,6 +474,7 @@ HTML_PAYLOAD = r'''
     
     let moveNum = 1;
 
+    // Build the grid purely with CSS Grid for 0 tearing and flawless resizing.
     function buildBoardDOM() {
         const boardEl = document.getElementById('board');
         boardEl.innerHTML = '';
@@ -472,7 +492,7 @@ HTML_PAYLOAD = r'''
                 const sqEl = document.createElement('div');
                 sqEl.className = `relative flex items-center justify-center ${isLight ? 'sq-light' : 'sq-dark'}`;
                 sqEl.id = `sq-${sqName}`;
-                // Direct onclick ensuring both laptop touch and mouse work perfectly
+                // Direct tap-to-move implementation. Flawless on iPad/Mobile/Laptop.
                 sqEl.onclick = () => handleSquareClick(sqName);
                 
                 const highlight = document.createElement('div');
@@ -483,7 +503,6 @@ HTML_PAYLOAD = r'''
 
                 const piece = document.createElement('div');
                 piece.id = `piece-${sqName}`; piece.className = 'piece'; piece.style.display = 'none';
-                piece.draggable = false; // Prevent laptop native image drag
 
                 sqEl.appendChild(highlight);
                 sqEl.appendChild(dot);
@@ -521,20 +540,20 @@ HTML_PAYLOAD = r'''
 
         const p = game.get(sq);
         
-        // Select own piece
+        // 1. Select own piece
         if (p && p.color === myColor) {
             selectedSquare = selectedSquare === sq ? null : sq;
             updateUI();
             return;
         }
 
-        // Make Move
+        // 2. Make Move
         if (selectedSquare) {
             const baseFen = game.fen();
             const move = game.move({ from: selectedSquare, to: sq, promotion: 'q' });
             if (move) {
                 selectedSquare = null;
-                updateUI(); // Instantly update optimistic state
+                updateUI(); // Optimistic instant update
                 (move.captured ? sfxCapture : sfxMove).play().catch(()=>{});
                 appendLog(move.san, myColor);
                 socket.emit('standard_move', { room, base_fen: baseFen, from: move.from, to: move.to, san: move.san, color: move.color, fen: game.fen() });
@@ -545,6 +564,7 @@ HTML_PAYLOAD = r'''
         }
     }
 
+    // Process spells and explicitly bypass normal chess rules
     function processSpellClick(sq) {
         const p = game.get(sq);
         const opp = myColor === 'w' ? 'b' : 'w';
@@ -731,16 +751,16 @@ HTML_PAYLOAD = r'''
                 turnIndicator.innerText = "YOUR TURN";
                 turnIndicator.className = "text-[10px] font-bold px-2 py-1 rounded bg-[#81b64c] text-black shadow";
                 myStatus.innerText = "YOUR TURN";
-                myStatus.className = "text-xs font-bold bg-[#81b64c] text-black px-3 py-1.5 rounded-full shadow";
+                myStatus.className = "text-xs font-mono font-bold bg-[#81b64c] text-black px-3 py-2 rounded shadow";
                 oppStatus.innerText = "Waiting";
-                oppStatus.className = "text-xs text-muted font-semibold bg-[#1f1e1b] px-3 py-1.5 rounded-full";
+                oppStatus.className = "text-xs font-mono font-bold bg-[#1f1e1b] text-muted px-3 py-2 rounded shadow-inner";
             } else {
                 turnIndicator.innerText = "OPPONENT'S TURN";
                 turnIndicator.className = "text-[10px] font-bold px-2 py-1 rounded bg-[#1f1e1b] text-muted";
                 myStatus.innerText = "Waiting";
-                myStatus.className = "text-xs text-muted font-semibold bg-[#1f1e1b] px-3 py-1.5 rounded-full";
+                myStatus.className = "text-xs font-mono font-bold bg-[#1f1e1b] text-muted px-3 py-2 rounded shadow-inner";
                 oppStatus.innerText = "THINKING";
-                oppStatus.className = "text-xs font-bold bg-[#81b64c] text-black px-3 py-1.5 rounded-full shadow";
+                oppStatus.className = "text-xs font-mono font-bold bg-[#81b64c] text-black px-3 py-2 rounded shadow";
             }
         }
 
@@ -757,12 +777,12 @@ HTML_PAYLOAD = r'''
                 if (spell.rarity === 'Rare') borderClass = 'border-b-4 border-purple-500 text-purple-400';
 
                 const card = document.createElement('div');
-                card.className = `spell-card p-3 rounded-xl bg-[#1a1917] border ${borderClass} ${!isUsed && isMyTurn() ? 'cursor-pointer hover:bg-[#201e1c]' : ''} flex flex-col items-center justify-center text-center ${isUsed ? 'used' : ''} ${isActive ? 'active' : ''} shadow-lg`;
+                card.className = `spell-card min-w-[100px] lg:w-auto p-3 rounded-xl bg-[#1a1917] border ${borderClass} ${!isUsed && isMyTurn() ? 'cursor-pointer hover:bg-[#201e1c]' : ''} flex flex-col items-center justify-center text-center ${isUsed ? 'used' : ''} ${isActive ? 'active' : ''} shadow-lg`;
                 
                 card.innerHTML = `
                     <div class="text-2xl mb-1 drop-shadow-md"><i class="${spell.icon}"></i></div>
                     <div class="text-[10px] font-extrabold leading-tight mb-1 text-white tracking-wide">${spell.name}</div>
-                    <div class="text-[9px] text-muted leading-tight">${spell.desc}</div>
+                    <div class="text-[9px] text-muted leading-tight hidden lg:block">${spell.desc}</div>
                 `;
                 
                 card.onclick = () => {
@@ -774,7 +794,7 @@ HTML_PAYLOAD = r'''
                     } else {
                         selectedSquare = null; activeSpell = spell; spellSourceSq = null;
                         const banner = document.getElementById('spell-banner');
-                        document.getElementById('spell-banner-title').innerHTML = `<i class="${spell.icon}"></i> ${spell.name}`;
+                        document.getElementById('spell-banner-title').innerHTML = `<i class="${spell.icon} mr-2"></i> ${spell.name}`;
                         document.getElementById('spell-banner-desc').innerText = spell.desc;
                         banner.classList.remove('hidden');
                         updateUI();
@@ -827,10 +847,14 @@ HTML_PAYLOAD = r'''
         
         if (myColor === 'w') { 
             document.getElementById('my-name').innerText = 'You (White)'; 
+            document.getElementById('my-avatar').src = 'https://images.chesscomfiles.com/chess-themes/pieces/neo/150/wp.png';
             document.getElementById('opp-name').innerText = 'Opponent (Black)'; 
+            document.getElementById('opp-avatar').src = 'https://images.chesscomfiles.com/chess-themes/pieces/neo/150/bp.png';
         } else if (myColor === 'b') { 
             document.getElementById('my-name').innerText = 'You (Black)'; 
+            document.getElementById('my-avatar').src = 'https://images.chesscomfiles.com/chess-themes/pieces/neo/150/bp.png';
             document.getElementById('opp-name').innerText = 'Opponent (White)'; 
+            document.getElementById('opp-avatar').src = 'https://images.chesscomfiles.com/chess-themes/pieces/neo/150/wp.png';
         } else { 
             document.getElementById('my-name').innerText = 'Spectator'; 
             document.getElementById('opp-name').innerText = 'Players'; 
