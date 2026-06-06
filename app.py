@@ -77,7 +77,8 @@ HTML_PAYLOAD = """
     <style>
         :root {
             --bg-main: #312e2b;
-            --bg-panel: #262421;
+            --bg-sidebar: #262421;
+            --bg-panel: #21201d;
             --bg-hover: #3c3a38;
             --text-main: #fff;
             --text-muted: #989795;
@@ -122,28 +123,6 @@ HTML_PAYLOAD = """
             gap: 8px;
         }
 
-        .invite-group {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            background: var(--bg-panel);
-            padding: 6px 12px;
-            border-radius: 6px;
-            border: 1px solid var(--border-color);
-        }
-
-        .invite-group input {
-            padding: 6px; width: 280px; background: #111; color: #fff;
-            border: 1px solid #444; border-radius: 4px; font-family: monospace; font-size: 0.85rem;
-        }
-
-        .btn-green {
-            background-color: var(--accent-green); color: white; border: none;
-            padding: 8px 16px; font-weight: bold; border-radius: 4px; cursor: pointer;
-            text-transform: uppercase; font-size: 0.85rem; transition: 0.2s;
-        }
-        .btn-green:hover { background-color: var(--accent-green-hover); }
-
         .info-btn {
             background: #444; color: #fff; border-radius: 50%; width: 32px; height: 32px;
             display: flex; align-items: center; justify-content: center; font-weight: bold;
@@ -159,7 +138,7 @@ HTML_PAYLOAD = """
             margin-top: 20px;
             margin-bottom: 40px;
             width: 100%;
-            max-width: 1200px;
+            max-width: 1100px;
             flex-wrap: wrap;
         }
 
@@ -169,7 +148,7 @@ HTML_PAYLOAD = """
             width: 550px;
         }
 
-        /* Player Tags & Captured Pieces */
+        /* Player Tags, Timers & Captured Pieces */
         .player-tag {
             display: flex; flex-direction: column; justify-content: center;
             padding: 10px 0; min-height: 50px;
@@ -181,8 +160,12 @@ HTML_PAYLOAD = """
         .user-block { display: flex; align-items: center; gap: 10px; }
         .avatar { width: 32px; height: 32px; background: #555; border-radius: 3px; display: flex; align-items: center; justify-content: center; font-size: 0.8rem; }
         
-        .status-badge { font-size: 0.75rem; padding: 3px 8px; border-radius: 12px; background: #444; color: #fff; text-transform: uppercase; font-weight: 800;}
-        .status-badge.active { background: var(--accent-green); }
+        /* The Clocks */
+        .clock {
+            background: rgba(0,0,0,0.5); color: #fff; padding: 6px 12px; border-radius: 4px;
+            font-family: monospace; font-size: 1.2rem; font-weight: bold; border: 1px solid var(--border-color);
+        }
+        .clock.active { background: #fff; color: #000; border-color: #fff;}
 
         .captured-area { display: flex; align-items: center; height: 25px; margin-top: 4px; padding-left: 42px; }
         .captured-piece { width: 22px; height: 22px; background-size: cover; margin-right: -8px; }
@@ -194,16 +177,23 @@ HTML_PAYLOAD = """
             border: 2px solid transparent;
         }
         .board-core.magic-active {
-            box-shadow: 0 0 40px var(--magic-glow); border: 2px solid var(--purple);
+            box-shadow: 0 0 40px var(--magic-glow); border: 2px solid var(--purple); cursor: crosshair;
         }
         #board { width: 100%; }
 
+        /* Spell Instruction Bar */
+        #spell-instruction {
+            background: var(--purple); color: #fff; font-weight: bold; padding: 10px;
+            text-align: center; border-radius: 4px; margin-top: 10px; display: none;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+        }
+
+        /* Deck & Spells */
         .deck-container {
             margin-top: 15px;
-            background: var(--bg-panel);
+            background: var(--bg-sidebar);
             padding: 15px;
             border-radius: 6px;
-            border: 1px solid var(--border-color);
         }
         .deck-title {
             font-size: 0.85rem; text-transform: uppercase; color: var(--text-muted); font-weight: 800; margin-bottom: 10px;
@@ -217,9 +207,9 @@ HTML_PAYLOAD = """
             background: var(--bg-main); border: 2px solid var(--border-color);
             border-radius: 6px; display: flex; flex-direction: column; align-items: center;
             justify-content: flex-start; text-align: center; cursor: pointer; transition: 0.15s;
-            position: relative; padding: 8px 4px;
+            position: relative; padding: 8px 4px; box-sizing: border-box;
         }
-        .spell-card:hover { transform: translateY(-4px); background: var(--bg-hover); }
+        .spell-card:hover { transform: translateY(-4px); background: var(--bg-hover); border-color: #777;}
         .spell-card.used { opacity: 0.2; pointer-events: none; filter: grayscale(100%); }
         
         .spell-icon { font-size: 1.8rem; margin-bottom: 8px; margin-top: 5px; text-shadow: 0 2px 4px rgba(0,0,0,0.5); }
@@ -228,6 +218,55 @@ HTML_PAYLOAD = """
         .spell-card.Legendary { border-bottom: 4px solid var(--gold); }
         .spell-card.Rare { border-bottom: 4px solid var(--purple); }
         .spell-card.Common { border-bottom: 4px solid var(--silver); }
+
+        /* Right Sidebar (Moves & Chat) */
+        .sidebar {
+            width: 350px;
+            background: var(--bg-sidebar);
+            border-radius: 8px;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            height: 620px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.4);
+        }
+
+        .sidebar-tabs {
+            display: flex; background: var(--bg-panel); border-bottom: 1px solid var(--border-color);
+        }
+        .sidebar-tab {
+            flex: 1; text-align: center; padding: 12px; font-weight: bold; color: var(--text-main);
+            border-bottom: 2px solid var(--accent-green);
+        }
+
+        .sidebar-content {
+            flex: 1; overflow-y: auto; display: flex; flex-direction: column;
+        }
+
+        /* Move List Table */
+        .move-history {
+            display: grid; grid-template-columns: 40px 1fr 1fr; font-size: 0.95rem; font-family: monospace;
+        }
+        .move-row { display: contents; }
+        .move-row > div { padding: 8px 10px; border-bottom: 1px solid var(--border-color); }
+        .move-num { background: var(--bg-panel); color: var(--text-muted); text-align: right;}
+        .move-ply { color: #fff; font-weight: bold; }
+        .move-ply.spell-move { color: var(--purple); }
+
+        /* Lobby / Share Link Box */
+        .lobby-box {
+            padding: 20px; text-align: center; background: var(--bg-panel); border-top: 1px solid var(--border-color);
+        }
+        .lobby-box h3 { margin: 0 0 10px 0; font-size: 1rem; color: #fff;}
+        .lobby-box input {
+            width: 90%; padding: 8px; background: #111; color: #fff; border: 1px solid #444; border-radius: 4px; margin-bottom: 10px; font-family: monospace;
+        }
+        .btn-green {
+            background-color: var(--accent-green); color: white; border: none; width: 95%;
+            padding: 12px; font-weight: bold; border-radius: 4px; cursor: pointer;
+            text-transform: uppercase; font-size: 0.95rem; transition: 0.2s;
+        }
+        .btn-green:hover { background-color: var(--accent-green-hover); }
 
         /* Modals & Overlays */
         .modal-overlay {
@@ -253,21 +292,12 @@ HTML_PAYLOAD = """
             font-weight: bold; display: none; z-index: 1000; text-align: center;
             box-shadow: 0 0 20px var(--magic-glow);
         }
-        .legal-dot::after {
-            content: ''; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-            width: 25%; height: 25%; background-color: rgba(0,0,0,0.3); border-radius: 50%;
-        }
     </style>
 </head>
 <body>
 
     <div id="header-bar">
         <div class="header-logo">♞ Wizard's Chess</div>
-        <div class="invite-group" id="invite-group">
-            <span style="font-size: 0.85rem; font-weight: bold; color: var(--text-muted);">WAITING FOR OPPONENT:</span>
-            <input type="text" id="shareLink" readonly>
-            <button class="btn-green" onclick="copyLink()">Copy</button>
-        </div>
         <button class="info-btn" onclick="$('#rules-modal').css('display', 'flex')">i</button>
     </div>
 
@@ -284,7 +314,7 @@ HTML_PAYLOAD = """
                         <div class="avatar">P2</div>
                         <span id="opp-name">Opponent (Connecting...)</span>
                     </div>
-                    <span id="opp-status" class="status-badge">Waiting</span>
+                    <div class="clock" id="clock-opp">10:00</div>
                 </div>
                 <div class="captured-area" id="opp-captured"></div>
             </div>
@@ -293,6 +323,8 @@ HTML_PAYLOAD = """
             <div class="board-core" id="board-wrap">
                 <div id="board"></div>
             </div>
+            
+            <div id="spell-instruction"></div>
 
             <!-- My Tag -->
             <div class="player-tag">
@@ -302,42 +334,60 @@ HTML_PAYLOAD = """
                         <div class="avatar" style="background: var(--accent-green); color: #000;">P1</div>
                         <span id="my-name">You</span>
                     </div>
-                    <span id="my-status" class="status-badge active">Your Turn</span>
+                    <div class="clock active" id="clock-my">10:00</div>
                 </div>
             </div>
 
-            <!-- My Spell Deck (Horizontal) -->
+            <!-- My Spell Deck -->
             <div class="deck-container">
                 <div class="deck-title">Your Hand</div>
                 <div class="spells-row" id="spells-view"></div>
             </div>
+        </div>
 
+        <!-- Right Sidebar -->
+        <div class="sidebar">
+            <div class="sidebar-tabs">
+                <div class="sidebar-tab">Match Telemetry</div>
+            </div>
+            
+            <div class="sidebar-content">
+                <div class="move-history" id="move-history">
+                    <!-- Moves will be appended here -->
+                </div>
+            </div>
+            
+            <div class="lobby-box" id="lobby-box">
+                <h3>Play a Friend</h3>
+                <input type="text" id="shareLink" readonly>
+                <button class="btn-green" onclick="copyLink()">Copy Link</button>
+            </div>
         </div>
     </div>
 
+    <!-- INSTRUCTION MANUAL MODAL -->
     <div class="modal-overlay" id="rules-modal">
         <div class="modal-content">
             <h2>How to Play Wizard's Chess</h2>
             <p><strong>The Deck:</strong> Out of 10 total spells, you are randomly dealt exactly 6 (1 Legendary, 2 Rares, 3 Commons).</p>
-            <p><strong>Casting Magic:</strong> Click a spell in your hand to activate it. The board will glow purple. You are now in <b>Magic Mode</b>.</p>
-            <p><strong>Resolving Effects:</strong> While the board is glowing, you can drag, drop, or throw pieces off the board to match your spell's description. Once you drop the piece, your turn ends and standard chess rules automatically lock back in.</p>
-            <p style="color: var(--accent-green);"><strong>Note:</strong> Spells cannot be used to directly capture a King.</p>
+            <p><strong>Fully Automated Magic:</strong> Unlike tabletop simulators, this engine enforces magic automatically. Click a spell in your hand to activate it. The board will glow, and an instruction bar will tell you what to click or drag. Once resolved, your turn automatically ends.</p>
+            <p style="color: var(--accent-green);"><strong>Note:</strong> Spells cannot be used to directly capture or target a King.</p>
             
-            <h3 style="margin-top: 25px; border-bottom: 1px solid var(--border-color); padding-bottom: 10px;">The Grimoire (All 10 Spells)</h3>
+            <h3 style="margin-top: 25px; border-bottom: 1px solid var(--border-color); padding-bottom: 10px;">The Grimoire (All 10 Automated Spells)</h3>
             <div class="grimoire-list">
                 <!-- Legendary -->
-                <div class="grimoire-item"><div class="grimoire-icon">⚡</div><div class="grimoire-text"><h4 style="color:var(--gold);">Avada Kedavra (Legendary)</h4><p>Drag an enemy piece off the board to instantly destroy it.</p></div></div>
-                <div class="grimoire-item"><div class="grimoire-icon">⏳</div><div class="grimoire-text"><h4 style="color:var(--gold);">Time-Turner (Legendary)</h4><p>Rewind or alter a previous board state.</p></div></div>
+                <div class="grimoire-item"><div class="grimoire-icon">⚡</div><div class="grimoire-text"><h4 style="color:var(--gold);">Avada Kedavra (Legendary)</h4><p>Click an enemy piece to instantly destroy it.</p></div></div>
+                <div class="grimoire-item"><div class="grimoire-icon">⏳</div><div class="grimoire-text"><h4 style="color:var(--gold);">Time-Turner (Legendary)</h4><p>Instantly rewinds the board to the previous round.</p></div></div>
                 <!-- Rare -->
-                <div class="grimoire-item"><div class="grimoire-icon">👁️</div><div class="grimoire-text"><h4 style="color:var(--purple);">Imperio (Rare)</h4><p>Commandeer an opponent's piece and move it yourself.</p></div></div>
-                <div class="grimoire-item"><div class="grimoire-icon">⚔️</div><div class="grimoire-text"><h4 style="color:var(--purple);">Sectumsempra (Rare)</h4><p>Target enemy piece cannot move for two turns.</p></div></div>
-                <div class="grimoire-item"><div class="grimoire-icon">🛡️</div><div class="grimoire-text"><h4 style="color:var(--purple);">Expecto Patronum (Rare)</h4><p>Shields an area of the board.</p></div></div>
-                <div class="grimoire-item"><div class="grimoire-icon">🔥</div><div class="grimoire-text"><h4 style="color:var(--purple);">Fiendfyre (Rare)</h4><p>Destroys multiple clustered pieces.</p></div></div>
+                <div class="grimoire-item"><div class="grimoire-icon">👁️</div><div class="grimoire-text"><h4 style="color:var(--purple);">Imperio (Rare)</h4><p>Drag and drop an enemy piece to make a legal move for them.</p></div></div>
+                <div class="grimoire-item"><div class="grimoire-icon">🩸</div><div class="grimoire-text"><h4 style="color:var(--purple);">Sectumsempra (Rare)</h4><p>Click an enemy piece. It is instantly demoted into a Pawn.</p></div></div>
+                <div class="grimoire-item"><div class="grimoire-icon">🔥</div><div class="grimoire-text"><h4 style="color:var(--purple);">Fiendfyre (Rare)</h4><p>Click any square. Destroys the piece on it and all 8 surrounding pieces.</p></div></div>
                 <!-- Common -->
-                <div class="grimoire-item"><div class="grimoire-icon">🧲</div><div class="grimoire-text"><h4 style="color:var(--silver);">Accio (Common)</h4><p>Pull one of your pieces up to 2 squares in any direction.</p></div></div>
-                <div class="grimoire-item"><div class="grimoire-icon">🪶</div><div class="grimoire-text"><h4 style="color:var(--silver);">Wingardium Leviosa (Common)</h4><p>Float one of your pieces to any adjacent empty square.</p></div></div>
-                <div class="grimoire-item"><div class="grimoire-icon">🗝️</div><div class="grimoire-text"><h4 style="color:var(--silver);">Alohomora (Common)</h4><p>Move one piece through occupied friendly pieces.</p></div></div>
-                <div class="grimoire-item"><div class="grimoire-icon">🔰</div><div class="grimoire-text"><h4 style="color:var(--silver);">Protego (Common)</h4><p>One of your pieces is shielded from capture next turn.</p></div></div>
+                <div class="grimoire-item"><div class="grimoire-icon">🧲</div><div class="grimoire-text"><h4 style="color:var(--silver);">Accio (Common)</h4><p>Drag one of your pieces up to 2 squares in any direction (ignores blockers).</p></div></div>
+                <div class="grimoire-item"><div class="grimoire-icon">🪶</div><div class="grimoire-text"><h4 style="color:var(--silver);">Wingardium Leviosa (Common)</h4><p>Drag one of your pieces to any adjacent empty square.</p></div></div>
+                <div class="grimoire-item"><div class="grimoire-icon">🗝️</div><div class="grimoire-text"><h4 style="color:var(--silver);">Alohomora (Common)</h4><p>Drag one of your pieces to any empty square on your half of the board.</p></div></div>
+                <div class="grimoire-item"><div class="grimoire-icon">🪄</div><div class="grimoire-text"><h4 style="color:var(--silver);">Expelliarmus (Common)</h4><p>Instantly forces the opponent to skip their next turn. You move twice.</p></div></div>
+                <div class="grimoire-item"><div class="grimoire-icon">🛡️</div><div class="grimoire-text"><h4 style="color:var(--silver);">Protego (Common)</h4><p>Click one of your Pawns to instantly promote it to a Knight.</p></div></div>
             </div>
 
             <button class="btn-green" style="margin-top: 20px; width: 100%;" onclick="$('#rules-modal').hide()">Close Manual</button>
@@ -369,8 +419,8 @@ HTML_PAYLOAD = """
             const copyText = document.getElementById("shareLink");
             copyText.select();
             document.execCommand("copy");
-            $('.invite-group .btn-green').text("Copied!");
-            setTimeout(() => $('.invite-group .btn-green').text("Copy"), 2000);
+            $('.lobby-box .btn-green').text("Copied!");
+            setTimeout(() => $('.lobby-box .btn-green').text("Copy Link"), 2000);
         }
 
         function showPopup(msg) {
@@ -378,37 +428,47 @@ HTML_PAYLOAD = """
             setTimeout(() => $('#notification').fadeOut(500), 2500);
         }
 
-        const poolLegendary = [
-            { name: "Avada Kedavra", rarity: "Legendary", icon: "⚡", effect: "Drag an enemy piece off the board to destroy it." },
-            { name: "Time-Turner", rarity: "Legendary", icon: "⏳", effect: "Rewind or alter a previous board state." }
-        ];
-        const poolRare = [
-            { name: "Imperio", rarity: "Rare", icon: "👁️", effect: "Commandeer an opponent's piece." },
-            { name: "Sectumsempra", rarity: "Rare", icon: "⚔️", effect: "Target cannot move for two turns." },
-            { name: "Expecto Patronum", rarity: "Rare", icon: "🛡️", effect: "Shields an area of the board." },
-            { name: "Fiendfyre", rarity: "Rare", icon: "🔥", effect: "Destroys multiple clustered pieces." }
-        ];
-        const poolCommon = [
-            { name: "Accio", rarity: "Common", icon: "🧲", effect: "Pull a piece up to 2 squares." },
-            { name: "Wingardium Leviosa", rarity: "Common", icon: "🪶", effect: "Float to an adjacent empty square." },
-            { name: "Alohomora", rarity: "Common", icon: "🗝️", effect: "Move through occupied friendly pieces." },
-            { name: "Protego", rarity: "Common", icon: "🔰", effect: "Shield from capture next turn." }
+        // FULL 10 SPELL DICTIONARY (STATELESS AUTOMATION)
+        const ALL_SPELLS = [
+            { id: 'avada', name: 'Avada Kedavra', rarity: 'Legendary', icon: '⚡', action: 'click', desc: 'Click an enemy piece to destroy it.' },
+            { id: 'time', name: 'Time-Turner', rarity: 'Legendary', icon: '⏳', action: 'instant', desc: 'Instantly rewinds the board 1 round.' },
+            { id: 'imperio', name: 'Imperio', rarity: 'Rare', icon: '👁️', action: 'drag', desc: 'Drag an enemy piece to move it for them.' },
+            { id: 'sectum', name: 'Sectumsempra', rarity: 'Rare', icon: '🩸', action: 'click', desc: 'Click an enemy piece to demote it to a Pawn.' },
+            { id: 'fiendfyre', name: 'Fiendfyre', rarity: 'Rare', icon: '🔥', action: 'click', desc: 'Click a square. Destroys it and adjacent squares.' },
+            { id: 'accio', name: 'Accio', rarity: 'Common', icon: '🧲', action: 'drag', desc: 'Drag your piece up to 2 squares (ignores rules).' },
+            { id: 'leviosa', name: 'Leviosa', rarity: 'Common', icon: '🪶', action: 'drag', desc: 'Drag your piece to any adjacent empty square.' },
+            { id: 'alohomora', name: 'Alohomora', rarity: 'Common', icon: '🗝️', action: 'drag', desc: 'Drag your piece to any empty square in your half.' },
+            { id: 'expelliarmus', name: 'Expelliarmus', rarity: 'Common', icon: '🪄', action: 'instant', desc: 'Opponent skips next turn. You move again.' },
+            { id: 'protego', name: 'Protego', rarity: 'Common', icon: '🛡️', action: 'click', desc: 'Click your Pawn to instantly promote it to a Knight.' }
         ];
 
         function shuffle(arr) { return arr.sort(() => 0.5 - Math.random()); }
         
         // Exact Deck Generation: 1 Leg, 2 Rare, 3 Common
         let myHand = [
-            ...shuffle(poolLegendary).slice(0, 1),
-            ...shuffle(poolRare).slice(0, 2),
-            ...shuffle(poolCommon).slice(0, 3)
+            ...shuffle(ALL_SPELLS.filter(s => s.rarity === 'Legendary')).slice(0, 1),
+            ...shuffle(ALL_SPELLS.filter(s => s.rarity === 'Rare')).slice(0, 2),
+            ...shuffle(ALL_SPELLS.filter(s => s.rarity === 'Common')).slice(0, 3)
         ];
 
         let board = null;
         let game = new Chess();
         let myColor = null;
-        let isMagicModeActive = false;
+        let activeSpell = null;
+        let fenHistory = [game.fen()];
+        let currentMoveNum = 1;
 
+        // Visual Clocks
+        let timeW = 600, timeB = 600;
+        function formatTime(s) { let m=Math.floor(s/60), sec=s%60; return m+":"+(sec<10?"0":"")+sec; }
+        setInterval(() => {
+            if(game.game_over() || !myColor) return;
+            if(game.turn() === 'w') timeW--; else timeB--;
+            $('#clock-my').text(formatTime(myColor==='w'?timeW:timeB));
+            $('#clock-opp').text(formatTime(myColor==='w'?timeB:timeW));
+        }, 1000);
+
+        // Captured Pieces Logic
         const pieceValues = { 'p': 1, 'n': 3, 'b': 3, 'r': 5, 'q': 9 };
         const baseCounts = { 'p': 8, 'n': 2, 'b': 2, 'r': 2, 'q': 1 };
         
@@ -453,27 +513,64 @@ HTML_PAYLOAD = """
             }
         }
 
+        function appendMove(text, isSpell=false) {
+            if (isSpell) {
+                $('#move-history').append(`<div class="move-row"><div></div><div class="move-ply spell-move" style="grid-column: span 2;">✨ ${text}</div></div>`);
+            } else {
+                if (game.turn() === 'b') {
+                    $('#move-history').append(`<div class="move-row"><div class="move-num">${currentMoveNum}.</div><div class="move-ply">${text}</div></div>`);
+                } else {
+                    $('#move-history .move-row:last-child').append(`<div class="move-ply">${text}</div>`);
+                    currentMoveNum++;
+                }
+            }
+            $('.sidebar-content').scrollTop($('.sidebar-content')[0].scrollHeight);
+        }
+
         socket.on('role_assigned', (color) => {
             myColor = color;
             
             // Render Hand
-            myHand.forEach((s, idx) => {
+            myHand.forEach(s => {
                 const card = $(`
-                    <div class="spell-card ${s.rarity}" id="card-${idx}" title="${s.effect}">
+                    <div class="spell-card ${s.rarity}" id="${s.id}" title="${s.desc}">
                         <div class="spell-icon">${s.icon}</div>
                         <div class="spell-name">${s.name}</div>
                     </div>
                 `);
                 
+                // CRITICAL TURN-LOCK LOGIC
                 card.on('click', function() {
+                    if (game.turn() !== myColor) {
+                        showPopup(`⚠️ You can only cast spells on your turn!`);
+                        return;
+                    }
                     if(!$(this).hasClass('used')) {
                         $(this).addClass('used');
                         sfxSpell.play();
                         socket.emit('spell_cast', { name: s.name });
                         
-                        isMagicModeActive = true;
+                        // INSTANT SPELL RESOLUTION
+                        if (s.action === 'instant') {
+                            if (s.id === 'time') {
+                                if (fenHistory.length >= 3) {
+                                    game.load(fenHistory[fenHistory.length - 3]);
+                                    endMagicTurn(s.name);
+                                } else { showPopup("Not enough history to rewind!"); }
+                            }
+                            else if (s.id === 'expelliarmus') {
+                                // Sync board without changing turn. Opponent is skipped!
+                                socket.emit('magic_sync', game.fen());
+                                appendMove(`EXPELLIARMUS`, true);
+                                showPopup("Opponent Turn Skipped!");
+                            }
+                            return;
+                        }
+
+                        // CLICK / DRAG ACTIVATION
+                        activeSpell = s;
                         $('#board-wrap').addClass('magic-active');
-                        showPopup(`✨ ${s.name.toUpperCase()}<br><span style="font-size:0.9rem; font-weight:normal;">Board Unlocked. Drag/drop to execute.</span>`);
+                        $('#spell-instruction').html(`🪄 <b>${s.name.toUpperCase()}</b>: ${s.desc}`).fadeIn(200);
                     }
                 });
                 $('#spells-view').append(card);
@@ -491,19 +588,20 @@ HTML_PAYLOAD = """
         });
 
         socket.on('user_joined', () => {
-            $('#invite-group').fadeOut(300);
+            $('#lobby-box').slideUp(300);
             sfxStart.play();
             updateStatusUI();
-            showPopup('Opponent Connected!<br>Game Started');
         });
 
         socket.on('standard_move', (move) => {
             let res = game.move(move);
             board.position(game.fen());
+            fenHistory.push(game.fen());
             
             if (res && res.captured) sfxCapture.play();
             else sfxMove.play();
             
+            appendMove(`${move.from}-${move.to}`);
             updateCapturedPieces();
             updateStatusUI();
         });
@@ -511,6 +609,7 @@ HTML_PAYLOAD = """
         socket.on('magic_sync', (fenState) => {
             game.load(fenState);
             board.position(fenState);
+            fenHistory.push(fenState);
             sfxSpell.play();
             updateCapturedPieces();
             updateStatusUI();
@@ -518,70 +617,139 @@ HTML_PAYLOAD = """
 
         socket.on('spell_cast', (spellData) => {
             sfxSpell.play();
-            showPopup(`Opponent cast<br><span style="color:var(--purple);">${spellData.name.toUpperCase()}</span>`);
+            appendMove(`${spellData.name.toUpperCase()}`, true);
         });
 
         function updateStatusUI() {
             if(!myColor) return;
             if (game.turn() === myColor) {
-                $('#my-status').addClass('active').text('Your Turn');
-                $('#opp-status').removeClass('active').text('Waiting');
+                $('#clock-my').addClass('active');
+                $('#clock-opp').removeClass('active');
             } else {
-                $('#opp-status').addClass('active').text('Thinking');
-                $('#my-status').removeClass('active').text('Wait');
+                $('#clock-opp').addClass('active');
+                $('#clock-my').removeClass('active');
             }
         }
 
-        function clearDots () { $('#board .square-55d63').removeClass('legal-dot'); }
-        function drawDot (square) { $('#board .square-' + square).addClass('legal-dot'); }
+        function endMagicTurn(spellName) {
+            activeSpell = null;
+            $('#board-wrap').removeClass('magic-active');
+            $('#spell-instruction').hide();
 
-        function onMouseoverSquare (square, piece) {
-            if (isMagicModeActive || game.game_over() || game.turn() !== myColor) return;
-            if (piece && piece.charAt(0) !== myColor) return;
-            var moves = game.moves({ square: square, verbose: true });
-            if (moves.length === 0) return;
-            for (var i = 0; i < moves.length; i++) drawDot(moves[i].to);
+            // Force turn switch
+            let tokens = game.fen().split(' ');
+            tokens[1] = (myColor === 'w') ? 'b' : 'w';
+            tokens[3] = '-'; // clear en passant
+            let nextFen = tokens.join(' ');
+            
+            game.load(nextFen);
+            fenHistory.push(nextFen);
+            board.position(nextFen);
+            
+            appendMove(`${spellName.toUpperCase()}`, true);
+            updateCapturedPieces();
+            updateStatusUI();
+            socket.emit('magic_sync', nextFen);
         }
 
-        function onMouseoutSquare () { clearDots(); }
+        // CLICK RESOLUTION ENGINE
+        $('#board').on('click', '.square-55d63', function() {
+            if (!activeSpell || activeSpell.action !== 'click') return;
+            let sq = $(this).attr('data-square');
+            let p = game.get(sq);
 
+            if (activeSpell.id === 'avada') {
+                if (p && p.color !== myColor && p.type !== 'k') {
+                    game.remove(sq); endMagicTurn(activeSpell.name);
+                } else showPopup("Must click a non-King enemy piece.");
+            }
+            else if (activeSpell.id === 'sectum') {
+                if (p && p.color !== myColor && p.type !== 'k') {
+                    game.remove(sq); game.put({type:'p', color:p.color}, sq); endMagicTurn(activeSpell.name);
+                } else showPopup("Must click an enemy piece.");
+            }
+            else if (activeSpell.id === 'fiendfyre') {
+                let file = sq.charCodeAt(0), rank = parseInt(sq[1]);
+                for(let f = file-1; f <= file+1; f++) {
+                    for(let r = rank-1; r <= rank+1; r++) {
+                        let targetSq = String.fromCharCode(f) + r;
+                        let tP = game.get(targetSq);
+                        if (tP && tP.type !== 'k') game.remove(targetSq);
+                    }
+                }
+                endMagicTurn(activeSpell.name);
+            }
+            else if (activeSpell.id === 'protego') {
+                if (p && p.color === myColor && p.type === 'p') {
+                    game.remove(sq); game.put({type:'n', color:myColor}, sq); endMagicTurn(activeSpell.name);
+                } else showPopup("Must click one of your Pawns.");
+            }
+        });
+
+        // DRAG RESOLUTION ENGINE
         function onDragStart(source, piece) {
-            if (isMagicModeActive) return true; // Magic Mode allows anything
-            if (game.game_over() || game.turn() !== myColor) return false;
+            if (game.game_over()) return false;
+            
+            // Spell Constraints
+            if (activeSpell) {
+                if (activeSpell.action !== 'drag') return false;
+                if (activeSpell.id === 'imperio') return piece.charAt(0) !== myColor; // Must drag enemy
+                return piece.charAt(0) === myColor; // Others must drag own
+            }
+            
+            // Standard Constraints
+            if (game.turn() !== myColor) return false;
             if ((myColor === 'w' && piece.search(/^b/) !== -1) || (myColor === 'b' && piece.search(/^w/) !== -1)) return false;
         }
 
         function onDrop(source, target) {
-            clearDots();
-            
-            // RESOLVE MAGIC SPELL
-            if (isMagicModeActive) {
-                if (source === target) return 'snapback';
-                sfxSpell.play();
-                isMagicModeActive = false;
-                $('#board-wrap').removeClass('magic-active');
+            if (activeSpell && activeSpell.action === 'drag') {
+                let p = game.get(source);
+                let tP = game.get(target);
+                if (tP && tP.type === 'k') return 'snapback'; // Never destroy Kings magically
 
-                // Force standard engine to accept chaos and switch turn
-                setTimeout(() => {
-                    let tokens = game.fen().split(' ');
-                    tokens[0] = board.fen(); // apply new layout
-                    tokens[1] = tokens[1] === 'w' ? 'b' : 'w'; // switch turn!
-                    let nextFen = tokens.join(' ');
+                let fDist = Math.abs(source.charCodeAt(0) - target.charCodeAt(0));
+                let rDist = Math.abs(source[1] - target[1]);
+
+                if (activeSpell.id === 'imperio') {
+                    // Temporarily flip engine turn to validate enemy move
+                    let tempFen = game.fen();
+                    let tokens = tempFen.split(' ');
+                    tokens[1] = (myColor === 'w') ? 'b' : 'w';
+                    game.load(tokens.join(' '));
                     
-                    let valid = game.load(nextFen);
-                    if(!valid) { game.load(board.fen() + " " + tokens[1] + " - - 0 1"); } // fallback
+                    let move = game.move({from: source, to: target, promotion: 'q'});
+                    if (!move) { game.load(tempFen); return 'snapback'; }
                     
-                    socket.emit('magic_sync', game.fen());
-                    updateCapturedPieces();
-                    updateStatusUI();
-                }, 100);
-                return;
+                    endMagicTurn(activeSpell.name);
+                    return;
+                }
+                else if (activeSpell.id === 'accio') {
+                    if (fDist <= 2 && rDist <= 2) {
+                        game.remove(source); game.put(p, target); endMagicTurn(activeSpell.name); return;
+                    } else return 'snapback';
+                }
+                else if (activeSpell.id === 'leviosa') {
+                    if (fDist <= 1 && rDist <= 1 && !tP) {
+                        game.remove(source); game.put(p, target); endMagicTurn(activeSpell.name); return;
+                    } else return 'snapback';
+                }
+                else if (activeSpell.id === 'alohomora') {
+                    let validRank = (myColor === 'w') ? target[1] <= 4 : target[1] >= 5; // Half of board
+                    if (!tP && validRank) {
+                        game.remove(source); game.put(p, target); endMagicTurn(activeSpell.name); return;
+                    } else return 'snapback';
+                }
+                return 'snapback';
             }
 
             // STANDARD MOVE
             let move = game.move({ from: source, to: target, promotion: 'q' });
             if (move === null) return 'snapback';
             
+            fenHistory.push(game.fen());
+            appendMove(`${source}-${target}`);
+
             if (move.captured) sfxCapture.play();
             else sfxMove.play();
 
@@ -591,13 +759,12 @@ HTML_PAYLOAD = """
         }
 
         function onSnapEnd() {
-            if(!isMagicModeActive) board.position(game.fen());
+            if(!activeSpell) board.position(game.fen());
         }
 
         board = Chessboard('board', {
-            draggable: true, dropOffBoard: 'trash', position: 'start',
+            draggable: true, position: 'start',
             onDragStart: onDragStart, onDrop: onDrop, onSnapEnd: onSnapEnd,
-            onMouseoutSquare: onMouseoutSquare, onMouseoverSquare: onMouseoverSquare,
             pieceTheme: 'https://chessboardjs.com/img/chesspieces/wikipedia/{piece}.png'
         });
     </script>
