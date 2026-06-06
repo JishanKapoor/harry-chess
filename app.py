@@ -5,11 +5,14 @@ from flask import request
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'lumos_maxima_secret'
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet')
+
+# Removed eventlet. It will now auto-default to modern threading + simple-websocket
+socketio = SocketIO(app, cors_allowed_origins="*")
 
 client_rooms = {}
 room_counts = {}
 
+# STRICT LOGGING PROTOCOL: Console logs only. No Excel/CRM.
 def keep_proper_logs(room_id, action):
     print(f"[ROOM: {room_id}] {action}")
 
@@ -164,6 +167,7 @@ HTML_PAYLOAD = """
         <div style="color:#888; margin-bottom: 10px;">> SESSION INITIATED. WAITING FOR OPPONENT.</div>
     </div>
 
+    <!-- WebSockets and Chess JS -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.js"></script>
     <script src="https://unpkg.com/@chrisoakman/chessboardjs@1.0.0/dist/chessboard-1.0.0.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
@@ -171,7 +175,6 @@ HTML_PAYLOAD = """
     <script>
         const socket = io();
         
-        // URL Room Logic
         const urlParams = new URLSearchParams(window.location.search);
         let room = urlParams.get('room');
         if (!room) {
@@ -241,7 +244,6 @@ HTML_PAYLOAD = """
         let game = new Chess();
         let myColor = null;
 
-        // Personalized Views Logic
         socket.on('role_assigned', (color) => {
             myColor = color;
             if (myColor === 'w') {
@@ -276,19 +278,18 @@ HTML_PAYLOAD = """
             keepProperLogs(`Opponent cast ${spellData.name.toUpperCase()}!`, 'spell');
         });
 
-        // HIGHLIGHTING LEGAL MOVES
         function removeGreySquares () { $('#board .square-55d63').removeClass('legal-highlight'); }
         function greySquare (square) { $('#board .square-' + square).addClass('legal-highlight'); }
 
         function onMouseoverSquare (square, piece) {
             if ($('#magicModeToggle').is(':checked') || game.game_over()) return;
-            if (game.turn() !== myColor) return; // Only show on your turn
+            if (game.turn() !== myColor) return;
             if (piece && piece.charAt(0) !== myColor) return;
 
             var moves = game.moves({ square: square, verbose: true });
             if (moves.length === 0) return;
 
-            greySquare(square); // Highlight the piece itself
+            greySquare(square); 
             for (var i = 0; i < moves.length; i++) { greySquare(moves[i].to); }
         }
 
