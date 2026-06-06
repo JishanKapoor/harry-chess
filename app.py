@@ -5,14 +5,11 @@ from flask import request
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'lumos_maxima_secret'
-# eventlet is the async mode recommended for production (Render)
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet')
 
-# Keep track of which user is in which room for multiplayer routing
 client_rooms = {}
 room_counts = {}
 
-# STRICT LOGGING PROTOCOL: Console logs only.
 def keep_proper_logs(room_id, action):
     print(f"[ROOM: {room_id}] {action}")
 
@@ -25,7 +22,6 @@ def handle_join(room_id):
     join_room(room_id)
     client_rooms[request.sid] = room_id
     
-    # Count people to assign White (1st) and Black (2nd)
     if room_id not in room_counts:
         room_counts[room_id] = 0
     room_counts[room_id] += 1
@@ -63,7 +59,7 @@ def handle_disconnect():
         del client_rooms[request.sid]
 
 # ==========================================
-# THE FRONTEND WIZARD'S CHESS UI (HTML/JS/CSS)
+# THE WIZARD'S CHESS UI (HTML/JS/CSS)
 # ==========================================
 HTML_PAYLOAD = """
 <!DOCTYPE html>
@@ -71,7 +67,7 @@ HTML_PAYLOAD = """
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Wizard's Chess</title>
+    <title>Wizard's Chess Multiplayer</title>
     
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <link rel="stylesheet" href="https://unpkg.com/@chrisoakman/chessboardjs@1.0.0/dist/chessboard-1.0.0.min.css">
@@ -81,8 +77,14 @@ HTML_PAYLOAD = """
         :root { --bg-color: #0f1115; --gold: #d4af37; --parchment: #f4e8c1; --dark-parchment: #d9c28e; }
         body { font-family: 'Spectral', serif; background-color: var(--bg-color); background-image: radial-gradient(circle at center, #1f2229 0%, #08090b 100%); color: var(--parchment); display: flex; flex-direction: column; align-items: center; margin: 0; padding: 20px; min-height: 100vh; }
         h1 { font-family: 'Cinzel', serif; color: var(--gold); text-shadow: 0 0 10px rgba(212, 175, 55, 0.5); margin-bottom: 5px; font-size: 2.5rem; }
-        .share-container { background: #222; padding: 10px 20px; border: 1px solid var(--gold); border-radius: 5px; margin-bottom: 20px; font-family: monospace; display: flex; align-items: center; gap: 10px; }
-        .share-container input { width: 350px; padding: 5px; background: #111; color: #fff; border: 1px solid #555; }
+        
+        /* Chess.com style Share Lobby */
+        .share-container { background: #1a1c23; padding: 15px 25px; border: 2px solid var(--gold); border-radius: 8px; margin-bottom: 20px; display: flex; align-items: center; gap: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); }
+        .share-text { font-family: 'Cinzel', serif; font-weight: bold; font-size: 1.1rem; }
+        .share-container input { width: 300px; padding: 8px; background: #0f1115; color: #fff; border: 1px solid #555; border-radius: 4px; font-family: monospace; }
+        .copy-btn { background: var(--gold); color: #000; border: none; padding: 8px 15px; font-family: 'Cinzel', serif; font-weight: bold; cursor: pointer; border-radius: 4px; transition: 0.2s; }
+        .copy-btn:hover { background: #f1d570; box-shadow: 0 0 10px var(--gold); }
+        
         .layout { display: flex; gap: 30px; max-width: 1200px; width: 100%; justify-content: center; align-items: flex-start; }
         .column { display: flex; flex-direction: column; gap: 15px; }
         .board-container { background-color: #2a2a2a; padding: 10px; border: 4px solid var(--gold); border-radius: 5px; box-shadow: 0 0 30px rgba(0, 0, 0, 0.8); }
@@ -90,9 +92,15 @@ HTML_PAYLOAD = """
         .controls { display: flex; justify-content: space-between; align-items: center; background: rgba(0,0,0,0.5); padding: 10px; border: 1px solid var(--gold); }
         .magic-toggle { display: flex; align-items: center; gap: 10px; font-family: 'Cinzel', serif; color: #ff4c4c; font-weight: bold; }
         input[type="checkbox"] { accent-color: #ff4c4c; width: 18px; height: 18px; cursor: pointer; }
-        .hand { display: flex; flex-direction: column; gap: 10px; width: 280px; }
+        
+        /* Personalized Hands */
+        .hand { display: flex; flex-direction: column; gap: 10px; width: 280px; transition: 0.3s; }
+        .hand.disabled-hand { opacity: 0.3; pointer-events: none; filter: grayscale(100%); }
         .hand-title { font-family: 'Cinzel', serif; font-size: 1.2rem; text-align: center; border-bottom: 1px solid var(--gold); padding-bottom: 5px; }
-        .card { background: var(--dark-parchment); color: #111; padding: 10px; border-radius: 5px; border: 2px solid #555; cursor: pointer; position: relative; }
+        
+        /* Magic Spells */
+        .card { background: var(--dark-parchment); color: #111; padding: 10px; border-radius: 5px; border: 2px solid #555; cursor: pointer; position: relative; transition: transform 0.1s; }
+        .card:hover { transform: scale(1.03); }
         .card.used { opacity: 0.4; pointer-events: none; text-decoration: line-through; filter: grayscale(100%); }
         .card-title { font-family: 'Cinzel', serif; font-weight: bold; font-size: 1rem; margin-bottom: 5px; }
         .card-effect { font-size: 0.85rem; line-height: 1.2; }
@@ -100,6 +108,18 @@ HTML_PAYLOAD = """
         .card.rare { border-color: #4b0082; background: linear-gradient(135deg, #f4e8c1, #dda0dd); }
         .card.common { border-color: #555; background: linear-gradient(135deg, #f4e8c1, #cccccc); }
         .rarity-tag { position: absolute; top: 5px; right: 5px; font-size: 0.65rem; text-transform: uppercase; font-weight: bold; opacity: 0.7; }
+        
+        /* Legal Move Highlights (Gold Dot) */
+        .legal-highlight { position: relative; }
+        .legal-highlight::after {
+            content: ''; position: absolute; top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            width: 30%; height: 30%;
+            background-color: rgba(212, 175, 55, 0.8);
+            border-radius: 50%; box-shadow: 0 0 10px var(--gold);
+            pointer-events: none;
+        }
+
         .log-container { width: 100%; max-width: 1100px; background: #111; border: 1px solid #444; margin-top: 20px; padding: 15px; height: 150px; overflow-y: auto; font-family: monospace; font-size: 0.9rem; color: #00ff00; }
         .log-entry.spell { color: #ff00ff; }
         .log-entry.magic-move { color: #ffaa00; }
@@ -110,21 +130,22 @@ HTML_PAYLOAD = """
     <h1>Wizard's Chess</h1>
     
     <div class="share-container">
-        <span>Share this link to invite Player 2:</span>
-        <input type="text" id="shareLink" readonly onclick="this.select()">
+        <span class="share-text">Invite Player 2:</span>
+        <input type="text" id="shareLink" readonly>
+        <button class="copy-btn" onclick="copyLink()">Copy Link</button>
     </div>
 
     <div class="layout">
         <div class="column">
             <div class="hand" id="hand-p1">
-                <div class="hand-title">Player 1 Spells (White)</div>
+                <div class="hand-title" id="title-p1">Player 1 Spells (White)</div>
             </div>
         </div>
 
         <div class="column">
             <div class="board-container"><div id="board"></div></div>
             <div class="controls">
-                <div id="status" style="font-family: 'Cinzel', serif; color: #4CAF50;">Connecting...</div>
+                <div id="status" style="font-family: 'Cinzel', serif; color: #4CAF50; font-size: 1.1rem;">Waiting for server...</div>
                 <div class="magic-toggle">
                     <input type="checkbox" id="magicModeToggle">
                     <label for="magicModeToggle">Cast Spell / Free Move</label>
@@ -134,13 +155,13 @@ HTML_PAYLOAD = """
 
         <div class="column">
             <div class="hand" id="hand-p2">
-                <div class="hand-title">Player 2 Spells (Black)</div>
+                <div class="hand-title" id="title-p2">Player 2 Spells (Black)</div>
             </div>
         </div>
     </div>
 
     <div class="log-container" id="actionLogger">
-        <div style="color:#888; margin-bottom: 10px;">> SESSION INITIATED. CLIENT LOGGING PROTOCOL ACTIVE.</div>
+        <div style="color:#888; margin-bottom: 10px;">> SESSION INITIATED. WAITING FOR OPPONENT.</div>
     </div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.js"></script>
@@ -150,6 +171,7 @@ HTML_PAYLOAD = """
     <script>
         const socket = io();
         
+        // URL Room Logic
         const urlParams = new URLSearchParams(window.location.search);
         let room = urlParams.get('room');
         if (!room) {
@@ -158,6 +180,14 @@ HTML_PAYLOAD = """
         }
         document.getElementById('shareLink').value = window.location.href;
         socket.emit('join_room', room);
+
+        function copyLink() {
+            const copyText = document.getElementById("shareLink");
+            copyText.select();
+            document.execCommand("copy");
+            document.querySelector('.copy-btn').innerText = "Copied!";
+            setTimeout(() => document.querySelector('.copy-btn').innerText = "Copy Link", 2000);
+        }
 
         const p1Spells = [
             { id: 'p1_1', name: "Avada Kedavra", rarity: "legendary", effect: "Target enemy piece is instantly destroyed." },
@@ -211,13 +241,21 @@ HTML_PAYLOAD = """
         let game = new Chess();
         let myColor = null;
 
+        // Personalized Views Logic
         socket.on('role_assigned', (color) => {
             myColor = color;
-            if (myColor === 'b') board.orientation('black');
+            if (myColor === 'w') {
+                $('#title-p1').html("<b>Your Spells</b> (White)");
+                $('#hand-p2').addClass('disabled-hand');
+            } else {
+                board.orientation('black');
+                $('#title-p2').html("<b>Your Spells</b> (Black)");
+                $('#hand-p1').addClass('disabled-hand');
+            }
             updateStatus();
         });
 
-        socket.on('user_joined', () => { keepProperLogs('Player 2 has joined the room!', 'magic'); });
+        socket.on('user_joined', () => { keepProperLogs('Player 2 has joined the lobby! Game ON.', 'magic'); });
 
         socket.on('standard_move', (move) => {
             game.move(move);
@@ -238,15 +276,35 @@ HTML_PAYLOAD = """
             keepProperLogs(`Opponent cast ${spellData.name.toUpperCase()}!`, 'spell');
         });
 
+        // HIGHLIGHTING LEGAL MOVES
+        function removeGreySquares () { $('#board .square-55d63').removeClass('legal-highlight'); }
+        function greySquare (square) { $('#board .square-' + square).addClass('legal-highlight'); }
+
+        function onMouseoverSquare (square, piece) {
+            if ($('#magicModeToggle').is(':checked') || game.game_over()) return;
+            if (game.turn() !== myColor) return; // Only show on your turn
+            if (piece && piece.charAt(0) !== myColor) return;
+
+            var moves = game.moves({ square: square, verbose: true });
+            if (moves.length === 0) return;
+
+            greySquare(square); // Highlight the piece itself
+            for (var i = 0; i < moves.length; i++) { greySquare(moves[i].to); }
+        }
+
+        function onMouseoutSquare (square, piece) { removeGreySquares(); }
+
         function onDragStart(source, piece) {
             if ($('#magicModeToggle').is(':checked')) return true;
             if (game.game_over()) return false;
+            if (game.turn() !== myColor) return false;
             if ((myColor === 'w' && piece.search(/^b/) !== -1) ||
                 (myColor === 'b' && piece.search(/^w/) !== -1)) return false;
-            if (game.turn() !== myColor) return false;
         }
 
         function onDrop(source, target) {
+            removeGreySquares();
+            
             if ($('#magicModeToggle').is(':checked')) {
                 if (source === target) return 'snapback';
                 if (target === 'offboard') keepProperLogs(`Magical Alteration: Piece destroyed!`, 'magic');
@@ -283,6 +341,7 @@ HTML_PAYLOAD = """
         board = Chessboard('board', {
             draggable: true, dropOffBoard: 'trash', position: 'start',
             onDragStart: onDragStart, onDrop: onDrop, onSnapEnd: onSnapEnd,
+            onMouseoutSquare: onMouseoutSquare, onMouseoverSquare: onMouseoverSquare,
             pieceTheme: 'https://chessboardjs.com/img/chesspieces/wikipedia/{piece}.png'
         });
     </script>
@@ -291,7 +350,6 @@ HTML_PAYLOAD = """
 """
 
 if __name__ == '__main__':
-    # Binds to the port provided by Render, defaults to 5000 locally
     port = int(os.environ.get('PORT', 5000))
-    print(f"> WIZARD'S CHESS SERVER ONLINE. PORT: {port}")
+    print(f"> SERVER ONLINE. PORT: {port}")
     socketio.run(app, host='0.0.0.0', port=port)
