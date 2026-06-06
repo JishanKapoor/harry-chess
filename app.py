@@ -76,14 +76,17 @@ HTML_PAYLOAD = """
     
     <style>
         :root {
-            --bg-main: #302e2b;
+            --bg-main: #312e2b;
             --bg-panel: #262421;
+            --bg-hover: #3c3a38;
             --text-main: #fff;
             --text-muted: #989795;
             --accent-green: #81b64c;
-            --gold: #f5b041;
+            --accent-green-hover: #a3d160;
+            --border-color: #403d39;
+            --gold: #f1b24a;
             --purple: #a855f7;
-            --silver: #9ca3af;
+            --silver: #a7a6a2;
             --magic-glow: rgba(168, 85, 247, 0.6);
         }
 
@@ -92,14 +95,13 @@ HTML_PAYLOAD = """
             background-color: var(--bg-main);
             color: var(--text-main);
             margin: 0;
+            padding: 0;
             display: flex;
             flex-direction: column;
             align-items: center;
-            height: 100vh;
-            overflow: hidden;
+            min-height: 100vh;
         }
 
-        /* Top Header & Invite Banner */
         #header-bar {
             width: 100%;
             background: #21201d;
@@ -108,183 +110,237 @@ HTML_PAYLOAD = """
             justify-content: space-between;
             align-items: center;
             box-sizing: border-box;
-            border-bottom: 2px solid #1a1917;
+            border-bottom: 5px solid #1a1917;
         }
+        
+        .header-logo {
+            font-weight: 800;
+            font-size: 1.3rem;
+            color: #fff;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
         .invite-group {
             display: flex;
             align-items: center;
             gap: 10px;
+            background: var(--bg-panel);
+            padding: 6px 12px;
+            border-radius: 6px;
+            border: 1px solid var(--border-color);
         }
+
         .invite-group input {
-            padding: 8px; width: 300px; background: #111; color: #fff;
-            border: 1px solid #444; border-radius: 4px; font-family: monospace;
+            padding: 6px; width: 280px; background: #111; color: #fff;
+            border: 1px solid #444; border-radius: 4px; font-family: monospace; font-size: 0.85rem;
         }
-        .btn {
+
+        .btn-green {
             background-color: var(--accent-green); color: white; border: none;
             padding: 8px 16px; font-weight: bold; border-radius: 4px; cursor: pointer;
+            text-transform: uppercase; font-size: 0.85rem; transition: 0.2s;
         }
-        .btn:hover { background-color: #a3d160; }
+        .btn-green:hover { background-color: var(--accent-green-hover); }
+
         .info-btn {
-            background: #444; color: #fff; border-radius: 50%; width: 30px; height: 30px;
+            background: #444; color: #fff; border-radius: 50%; width: 32px; height: 32px;
             display: flex; align-items: center; justify-content: center; font-weight: bold;
-            cursor: pointer; border: none;
+            cursor: pointer; border: none; font-size: 1.1rem; transition: 0.2s;
         }
+        .info-btn:hover { background: #666; }
 
-        /* Modals */
-        .modal-overlay {
-            display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0,0,0,0.8); z-index: 2000; justify-content: center; align-items: center;
-        }
-        .modal-content {
-            background: var(--bg-panel); padding: 30px; border-radius: 8px; max-width: 600px;
-            border: 1px solid #444; color: var(--text-main); line-height: 1.5;
-        }
-        .modal-content h2 { color: var(--gold); margin-top: 0; }
-
-        /* Main Game Layout (2 Columns) */
-        .game-layout {
-            display: grid;
-            grid-template-columns: 320px 550px;
-            gap: 40px;
-            margin-top: 30px;
+        .main-container {
+            display: flex;
             justify-content: center;
+            align-items: flex-start;
+            gap: 20px;
+            margin-top: 20px;
+            margin-bottom: 40px;
+            width: 100%;
+            max-width: 1200px;
+            flex-wrap: wrap;
         }
 
-        /* Spells Column */
-        .spell-column {
+        .board-wrapper {
             display: flex;
             flex-direction: column;
-            gap: 10px;
+            width: 550px;
         }
-        .hand-title {
-            font-size: 1.1rem; font-weight: bold; padding-bottom: 10px;
-            border-bottom: 1px solid #444; margin-bottom: 5px;
-        }
-        .card {
-            background-color: var(--bg-panel); border: 1px solid #444; padding: 12px;
-            border-radius: 6px; cursor: pointer; position: relative; transition: 0.2s;
-            border-left-width: 4px;
-        }
-        .card:hover { transform: translateX(5px); }
-        .card.used { opacity: 0.3; pointer-events: none; filter: grayscale(100%); }
-        .card-title { font-weight: bold; margin-bottom: 4px; font-size: 1rem; }
-        .card-effect { font-size: 0.85rem; color: #ccc; }
-        
-        /* Rarity Colors */
-        .card.Legendary { border-left-color: var(--gold); }
-        .card.Legendary .card-title { color: var(--gold); }
-        .card.Rare { border-left-color: var(--purple); }
-        .card.Rare .card-title { color: var(--purple); }
-        .card.Common { border-left-color: var(--silver); }
-        .card.Common .card-title { color: var(--silver); }
 
-        /* Board Column & Player Tags */
-        .board-col { display: flex; flex-direction: column; width: 550px; }
-        
+        /* Player Tags & Captured Pieces */
         .player-tag {
             display: flex; flex-direction: column; justify-content: center;
-            padding: 8px 0; min-height: 50px;
+            padding: 10px 0; min-height: 50px;
         }
         .player-info {
-            display: flex; align-items: center; justify-content: space-between; font-weight: bold; font-size: 1.1rem;
+            display: flex; align-items: center; justify-content: space-between; font-weight: bold; font-size: 1rem;
         }
-        .status-badge {
-            font-size: 0.8rem; padding: 3px 8px; border-radius: 12px; background: #444; color: #fff;
-        }
+        
+        .user-block { display: flex; align-items: center; gap: 10px; }
+        .avatar { width: 32px; height: 32px; background: #555; border-radius: 3px; display: flex; align-items: center; justify-content: center; font-size: 0.8rem; }
+        
+        .status-badge { font-size: 0.75rem; padding: 3px 8px; border-radius: 12px; background: #444; color: #fff; text-transform: uppercase; font-weight: 800;}
         .status-badge.active { background: var(--accent-green); }
 
-        /* Captured Pieces UI */
-        .captured-area {
-            display: flex; align-items: center; height: 25px; margin-top: 2px;
-        }
-        .captured-piece {
-            width: 22px; height: 22px; background-size: cover; margin-right: -8px;
-        }
-        .material-adv {
-            margin-left: 15px; font-size: 0.9rem; font-weight: bold; color: var(--text-muted);
-        }
+        .captured-area { display: flex; align-items: center; height: 25px; margin-top: 4px; padding-left: 42px; }
+        .captured-piece { width: 22px; height: 22px; background-size: cover; margin-right: -8px; }
+        .material-adv { margin-left: 15px; font-size: 0.85rem; font-weight: bold; color: var(--text-muted); }
 
         /* The Board */
-        .board-container {
-            border-radius: 4px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); transition: 0.3s;
+        .board-core {
+            border-radius: 4px; box-shadow: 0 4px 15px rgba(0,0,0,0.4); transition: 0.3s;
+            border: 2px solid transparent;
         }
-        .board-container.magic-active {
+        .board-core.magic-active {
             box-shadow: 0 0 40px var(--magic-glow); border: 2px solid var(--purple);
         }
         #board { width: 100%; }
 
-        /* Overlays */
+        .deck-container {
+            margin-top: 15px;
+            background: var(--bg-panel);
+            padding: 15px;
+            border-radius: 6px;
+            border: 1px solid var(--border-color);
+        }
+        .deck-title {
+            font-size: 0.85rem; text-transform: uppercase; color: var(--text-muted); font-weight: 800; margin-bottom: 10px;
+        }
+        .spells-row {
+            display: flex; gap: 10px; overflow-x: auto; padding-bottom: 5px;
+        }
+        
+        .spell-card {
+            min-width: 90px; width: 90px; height: 120px;
+            background: var(--bg-main); border: 2px solid var(--border-color);
+            border-radius: 6px; display: flex; flex-direction: column; align-items: center;
+            justify-content: flex-start; text-align: center; cursor: pointer; transition: 0.15s;
+            position: relative; padding: 8px 4px;
+        }
+        .spell-card:hover { transform: translateY(-4px); background: var(--bg-hover); }
+        .spell-card.used { opacity: 0.2; pointer-events: none; filter: grayscale(100%); }
+        
+        .spell-icon { font-size: 1.8rem; margin-bottom: 8px; margin-top: 5px; text-shadow: 0 2px 4px rgba(0,0,0,0.5); }
+        .spell-name { font-size: 0.75rem; font-weight: bold; line-height: 1.1; color: #fff; }
+        
+        .spell-card.Legendary { border-bottom: 4px solid var(--gold); }
+        .spell-card.Rare { border-bottom: 4px solid var(--purple); }
+        .spell-card.Common { border-bottom: 4px solid var(--silver); }
+
+        /* Modals & Overlays */
+        .modal-overlay {
+            display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.85); z-index: 2000; justify-content: center; align-items: center;
+        }
+        .modal-content {
+            background: var(--bg-panel); padding: 30px; border-radius: 8px; width: 90%; max-width: 650px;
+            max-height: 85vh; overflow-y: auto; border: 1px solid var(--border-color); color: var(--text-main);
+        }
+        .modal-content h2 { color: #fff; margin-top: 0; border-bottom: 1px solid var(--border-color); padding-bottom: 10px;}
+        
+        .grimoire-list { display: flex; flex-direction: column; gap: 10px; margin-top: 15px; }
+        .grimoire-item { display: flex; align-items: center; gap: 15px; background: var(--bg-main); padding: 10px; border-radius: 4px; }
+        .grimoire-icon { font-size: 1.5rem; width: 40px; text-align: center;}
+        .grimoire-text h4 { margin: 0 0 4px 0; color: #fff;}
+        .grimoire-text p { margin: 0; font-size: 0.85rem; color: #ccc;}
+
         #notification {
             position: fixed; top: 40%; left: 50%; transform: translate(-50%, -50%);
-            background: rgba(0,0,0,0.9); color: var(--gold); padding: 15px 30px;
-            border-radius: 8px; border: 2px solid var(--gold); font-size: 1.2rem;
+            background: rgba(0,0,0,0.9); color: #fff; padding: 15px 30px;
+            border-radius: 8px; border: 2px solid var(--purple); font-size: 1.2rem;
             font-weight: bold; display: none; z-index: 1000; text-align: center;
+            box-shadow: 0 0 20px var(--magic-glow);
         }
         .legal-dot::after {
             content: ''; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-            width: 25%; height: 25%; background-color: rgba(0,0,0,0.2); border-radius: 50%;
+            width: 25%; height: 25%; background-color: rgba(0,0,0,0.3); border-radius: 50%;
         }
     </style>
 </head>
 <body>
 
-    <!-- Header & Invite -->
     <div id="header-bar">
-        <div style="font-weight: bold; font-size: 1.2rem; color: var(--gold);">Wizard's Chess</div>
+        <div class="header-logo">♞ Wizard's Chess</div>
         <div class="invite-group" id="invite-group">
-            <span>Waiting for Opponent...</span>
+            <span style="font-size: 0.85rem; font-weight: bold; color: var(--text-muted);">WAITING FOR OPPONENT:</span>
             <input type="text" id="shareLink" readonly>
-            <button class="btn" onclick="copyLink()">Copy Link</button>
+            <button class="btn-green" onclick="copyLink()">Copy</button>
         </div>
         <button class="info-btn" onclick="$('#rules-modal').css('display', 'flex')">i</button>
     </div>
 
     <div id="notification"></div>
 
-    <div class="game-layout">
-        
-        <!-- Left: Spells -->
-        <div class="spell-column">
-            <div class="hand-title">Your Spell Hand</div>
-            <div id="spells-view" style="display: flex; flex-direction: column; gap: 10px;"></div>
-        </div>
-
-        <!-- Right: Board Area -->
-        <div class="board-col">
+    <div class="main-container">
+        <!-- Center Board Column -->
+        <div class="board-wrapper">
+            
             <!-- Opponent Tag -->
             <div class="player-tag">
                 <div class="player-info">
-                    <span id="opp-name">Opponent (Connecting...)</span>
+                    <div class="user-block">
+                        <div class="avatar">P2</div>
+                        <span id="opp-name">Opponent (Connecting...)</span>
+                    </div>
                     <span id="opp-status" class="status-badge">Waiting</span>
                 </div>
                 <div class="captured-area" id="opp-captured"></div>
             </div>
 
             <!-- Board -->
-            <div class="board-container" id="board-wrap">
+            <div class="board-core" id="board-wrap">
                 <div id="board"></div>
             </div>
 
             <!-- My Tag -->
             <div class="player-tag">
+                <div class="captured-area" id="my-captured" style="margin-top: 0; margin-bottom: 4px;"></div>
                 <div class="player-info">
-                    <span id="my-name">You</span>
+                    <div class="user-block">
+                        <div class="avatar" style="background: var(--accent-green); color: #000;">P1</div>
+                        <span id="my-name">You</span>
+                    </div>
                     <span id="my-status" class="status-badge active">Your Turn</span>
                 </div>
-                <div class="captured-area" id="my-captured"></div>
             </div>
+
+            <!-- My Spell Deck (Horizontal) -->
+            <div class="deck-container">
+                <div class="deck-title">Your Hand</div>
+                <div class="spells-row" id="spells-view"></div>
+            </div>
+
         </div>
     </div>
 
-    <!-- Instructions Modal -->
     <div class="modal-overlay" id="rules-modal">
         <div class="modal-content">
             <h2>How to Play Wizard's Chess</h2>
             <p><strong>The Deck:</strong> Out of 10 total spells, you are randomly dealt exactly 6 (1 Legendary, 2 Rares, 3 Commons).</p>
             <p><strong>Casting Magic:</strong> Click a spell in your hand to activate it. The board will glow purple. You are now in <b>Magic Mode</b>.</p>
             <p><strong>Resolving Effects:</strong> While the board is glowing, you can drag, drop, or throw pieces off the board to match your spell's description. Once you drop the piece, your turn ends and standard chess rules automatically lock back in.</p>
-            <p><strong>Note:</strong> Spells cannot be used to directly capture a King.</p>
-            <button class="btn" style="margin-top: 15px;" onclick="$('#rules-modal').hide()">Understood</button>
+            <p style="color: var(--accent-green);"><strong>Note:</strong> Spells cannot be used to directly capture a King.</p>
+            
+            <h3 style="margin-top: 25px; border-bottom: 1px solid var(--border-color); padding-bottom: 10px;">The Grimoire (All 10 Spells)</h3>
+            <div class="grimoire-list">
+                <!-- Legendary -->
+                <div class="grimoire-item"><div class="grimoire-icon">⚡</div><div class="grimoire-text"><h4 style="color:var(--gold);">Avada Kedavra (Legendary)</h4><p>Drag an enemy piece off the board to instantly destroy it.</p></div></div>
+                <div class="grimoire-item"><div class="grimoire-icon">⏳</div><div class="grimoire-text"><h4 style="color:var(--gold);">Time-Turner (Legendary)</h4><p>Rewind or alter a previous board state.</p></div></div>
+                <!-- Rare -->
+                <div class="grimoire-item"><div class="grimoire-icon">👁️</div><div class="grimoire-text"><h4 style="color:var(--purple);">Imperio (Rare)</h4><p>Commandeer an opponent's piece and move it yourself.</p></div></div>
+                <div class="grimoire-item"><div class="grimoire-icon">⚔️</div><div class="grimoire-text"><h4 style="color:var(--purple);">Sectumsempra (Rare)</h4><p>Target enemy piece cannot move for two turns.</p></div></div>
+                <div class="grimoire-item"><div class="grimoire-icon">🛡️</div><div class="grimoire-text"><h4 style="color:var(--purple);">Expecto Patronum (Rare)</h4><p>Shields an area of the board.</p></div></div>
+                <div class="grimoire-item"><div class="grimoire-icon">🔥</div><div class="grimoire-text"><h4 style="color:var(--purple);">Fiendfyre (Rare)</h4><p>Destroys multiple clustered pieces.</p></div></div>
+                <!-- Common -->
+                <div class="grimoire-item"><div class="grimoire-icon">🧲</div><div class="grimoire-text"><h4 style="color:var(--silver);">Accio (Common)</h4><p>Pull one of your pieces up to 2 squares in any direction.</p></div></div>
+                <div class="grimoire-item"><div class="grimoire-icon">🪶</div><div class="grimoire-text"><h4 style="color:var(--silver);">Wingardium Leviosa (Common)</h4><p>Float one of your pieces to any adjacent empty square.</p></div></div>
+                <div class="grimoire-item"><div class="grimoire-icon">🗝️</div><div class="grimoire-text"><h4 style="color:var(--silver);">Alohomora (Common)</h4><p>Move one piece through occupied friendly pieces.</p></div></div>
+                <div class="grimoire-item"><div class="grimoire-icon">🔰</div><div class="grimoire-text"><h4 style="color:var(--silver);">Protego (Common)</h4><p>One of your pieces is shielded from capture next turn.</p></div></div>
+            </div>
+
+            <button class="btn-green" style="margin-top: 20px; width: 100%;" onclick="$('#rules-modal').hide()">Close Manual</button>
         </div>
     </div>
 
@@ -294,7 +350,6 @@ HTML_PAYLOAD = """
     <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
 
     <script>
-        // Official Audio
         const sfxMove = new Audio('https://images.chesscomfiles.com/chess-themes/sounds/_MP3_/default/move-self.mp3');
         const sfxCapture = new Audio('https://images.chesscomfiles.com/chess-themes/sounds/_MP3_/default/capture.mp3');
         const sfxStart = new Audio('https://images.chesscomfiles.com/chess-themes/sounds/_MP3_/default/game-start.mp3');
@@ -314,8 +369,8 @@ HTML_PAYLOAD = """
             const copyText = document.getElementById("shareLink");
             copyText.select();
             document.execCommand("copy");
-            $('.invite-group .btn').text("Copied!");
-            setTimeout(() => $('.invite-group .btn').text("Copy Link"), 2000);
+            $('.invite-group .btn-green').text("Copied!");
+            setTimeout(() => $('.invite-group .btn-green').text("Copy"), 2000);
         }
 
         function showPopup(msg) {
@@ -323,40 +378,37 @@ HTML_PAYLOAD = """
             setTimeout(() => $('#notification').fadeOut(500), 2500);
         }
 
-        // --- 10 SPELL POOL & RANDOMIZER ---
         const poolLegendary = [
-            { name: "Avada Kedavra", rarity: "Legendary", effect: "Drag an enemy piece off the board to instantly destroy it." },
-            { name: "Time-Turner", rarity: "Legendary", effect: "Rewind or alter a previous board state." }
+            { name: "Avada Kedavra", rarity: "Legendary", icon: "⚡", effect: "Drag an enemy piece off the board to destroy it." },
+            { name: "Time-Turner", rarity: "Legendary", icon: "⏳", effect: "Rewind or alter a previous board state." }
         ];
         const poolRare = [
-            { name: "Imperio", rarity: "Rare", effect: "Commandeer an opponent's piece and move it yourself." },
-            { name: "Sectumsempra", rarity: "Rare", effect: "Target enemy piece cannot move for two turns." },
-            { name: "Expecto Patronum", rarity: "Rare", effect: "Shields an area of the board." },
-            { name: "Fiendfyre", rarity: "Rare", effect: "Destroys multiple clustered pieces." }
+            { name: "Imperio", rarity: "Rare", icon: "👁️", effect: "Commandeer an opponent's piece." },
+            { name: "Sectumsempra", rarity: "Rare", icon: "⚔️", effect: "Target cannot move for two turns." },
+            { name: "Expecto Patronum", rarity: "Rare", icon: "🛡️", effect: "Shields an area of the board." },
+            { name: "Fiendfyre", rarity: "Rare", icon: "🔥", effect: "Destroys multiple clustered pieces." }
         ];
         const poolCommon = [
-            { name: "Accio", rarity: "Common", effect: "Pull one of your pieces up to 2 squares in any direction." },
-            { name: "Wingardium Leviosa", rarity: "Common", effect: "Float one of your pieces to any adjacent empty square." },
-            { name: "Alohomora", rarity: "Common", effect: "Move one piece through occupied friendly pieces." },
-            { name: "Protego", rarity: "Common", effect: "One of your pieces is shielded from capture next turn." }
+            { name: "Accio", rarity: "Common", icon: "🧲", effect: "Pull a piece up to 2 squares." },
+            { name: "Wingardium Leviosa", rarity: "Common", icon: "🪶", effect: "Float to an adjacent empty square." },
+            { name: "Alohomora", rarity: "Common", icon: "🗝️", effect: "Move through occupied friendly pieces." },
+            { name: "Protego", rarity: "Common", icon: "🔰", effect: "Shield from capture next turn." }
         ];
 
         function shuffle(arr) { return arr.sort(() => 0.5 - Math.random()); }
         
-        // Draw 6 cards exactly
+        // Exact Deck Generation: 1 Leg, 2 Rare, 3 Common
         let myHand = [
             ...shuffle(poolLegendary).slice(0, 1),
             ...shuffle(poolRare).slice(0, 2),
             ...shuffle(poolCommon).slice(0, 3)
         ];
 
-        // --- GAME STATE ---
         let board = null;
         let game = new Chess();
         let myColor = null;
-        let isMagicModeActive = false; // The invisible engine toggle
+        let isMagicModeActive = false;
 
-        // --- RENDER CAPTURED PIECES (CHESS.COM STYLE) ---
         const pieceValues = { 'p': 1, 'n': 3, 'b': 3, 'r': 5, 'q': 9 };
         const baseCounts = { 'p': 8, 'n': 2, 'b': 2, 'r': 2, 'q': 1 };
         
@@ -401,31 +453,27 @@ HTML_PAYLOAD = """
             }
         }
 
-        // --- NETWORK EVENTS ---
         socket.on('role_assigned', (color) => {
             myColor = color;
             
             // Render Hand
             myHand.forEach((s, idx) => {
                 const card = $(`
-                    <div class="card ${s.rarity}" id="card-${idx}">
-                        <div class="card-title">${s.name}</div>
-                        <div class="card-effect">${s.effect}</div>
+                    <div class="spell-card ${s.rarity}" id="card-${idx}" title="${s.effect}">
+                        <div class="spell-icon">${s.icon}</div>
+                        <div class="spell-name">${s.name}</div>
                     </div>
                 `);
                 
-                // SPELL EXECUTION
                 card.on('click', function() {
                     if(!$(this).hasClass('used')) {
                         $(this).addClass('used');
                         sfxSpell.play();
-                        
                         socket.emit('spell_cast', { name: s.name });
                         
-                        // Activate invisible magic engine
                         isMagicModeActive = true;
                         $('#board-wrap').addClass('magic-active');
-                        showPopup(`✨ <b>${s.name.toUpperCase()}</b><br><span style="font-size:1rem;">Board Unlocked. Execute your magic.</span>`);
+                        showPopup(`✨ ${s.name.toUpperCase()}<br><span style="font-size:0.9rem; font-weight:normal;">Board Unlocked. Drag/drop to execute.</span>`);
                     }
                 });
                 $('#spells-view').append(card);
@@ -446,7 +494,7 @@ HTML_PAYLOAD = """
             $('#invite-group').fadeOut(300);
             sfxStart.play();
             updateStatusUI();
-            showPopup('Game Started!');
+            showPopup('Opponent Connected!<br>Game Started');
         });
 
         socket.on('standard_move', (move) => {
@@ -461,7 +509,7 @@ HTML_PAYLOAD = """
         });
 
         socket.on('magic_sync', (fenState) => {
-            game.load(fenState + " w - - 0 1");
+            game.load(fenState);
             board.position(fenState);
             sfxSpell.play();
             updateCapturedPieces();
@@ -470,11 +518,9 @@ HTML_PAYLOAD = """
 
         socket.on('spell_cast', (spellData) => {
             sfxSpell.play();
-            showPopup(`Opponent used<br><b>${spellData.name.toUpperCase()}</b>`);
+            showPopup(`Opponent cast<br><span style="color:var(--purple);">${spellData.name.toUpperCase()}</span>`);
         });
 
-
-        // --- UI STATUS UPDATER ---
         function updateStatusUI() {
             if(!myColor) return;
             if (game.turn() === myColor) {
@@ -482,18 +528,16 @@ HTML_PAYLOAD = """
                 $('#opp-status').removeClass('active').text('Waiting');
             } else {
                 $('#opp-status').addClass('active').text('Thinking');
-                $('#my-status').removeClass('active').text('Waiting');
+                $('#my-status').removeClass('active').text('Wait');
             }
         }
 
-        // --- BOARD INTERACTION ---
         function clearDots () { $('#board .square-55d63').removeClass('legal-dot'); }
         function drawDot (square) { $('#board .square-' + square).addClass('legal-dot'); }
 
         function onMouseoverSquare (square, piece) {
             if (isMagicModeActive || game.game_over() || game.turn() !== myColor) return;
             if (piece && piece.charAt(0) !== myColor) return;
-
             var moves = game.moves({ square: square, verbose: true });
             if (moves.length === 0) return;
             for (var i = 0; i < moves.length; i++) drawDot(moves[i].to);
@@ -510,27 +554,31 @@ HTML_PAYLOAD = """
         function onDrop(source, target) {
             clearDots();
             
-            // --- RESOLVE MAGIC SPELL ---
+            // RESOLVE MAGIC SPELL
             if (isMagicModeActive) {
                 if (source === target) return 'snapback';
-                
                 sfxSpell.play();
-                
-                // Turn off magic mode immediately after drop
                 isMagicModeActive = false;
                 $('#board-wrap').removeClass('magic-active');
 
-                // Force standard engine to accept chaos
+                // Force standard engine to accept chaos and switch turn
                 setTimeout(() => {
-                    const nextFen = board.fen();
-                    game.load(nextFen + " w - - 0 1"); 
-                    socket.emit('magic_sync', nextFen);
+                    let tokens = game.fen().split(' ');
+                    tokens[0] = board.fen(); // apply new layout
+                    tokens[1] = tokens[1] === 'w' ? 'b' : 'w'; // switch turn!
+                    let nextFen = tokens.join(' ');
+                    
+                    let valid = game.load(nextFen);
+                    if(!valid) { game.load(board.fen() + " " + tokens[1] + " - - 0 1"); } // fallback
+                    
+                    socket.emit('magic_sync', game.fen());
                     updateCapturedPieces();
+                    updateStatusUI();
                 }, 100);
                 return;
             }
 
-            // --- STANDARD MOVE ---
+            // STANDARD MOVE
             let move = game.move({ from: source, to: target, promotion: 'q' });
             if (move === null) return 'snapback';
             
@@ -547,9 +595,7 @@ HTML_PAYLOAD = """
         }
 
         board = Chessboard('board', {
-            draggable: true,
-            dropOffBoard: 'trash', // Throw pieces off board for Avada Kedavra
-            position: 'start',
+            draggable: true, dropOffBoard: 'trash', position: 'start',
             onDragStart: onDragStart, onDrop: onDrop, onSnapEnd: onSnapEnd,
             onMouseoutSquare: onMouseoutSquare, onMouseoverSquare: onMouseoverSquare,
             pieceTheme: 'https://chessboardjs.com/img/chesspieces/wikipedia/{piece}.png'
