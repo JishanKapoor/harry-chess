@@ -300,13 +300,31 @@ HTML_PAYLOAD = r'''
 
         * { box-sizing: border-box; }
         
+        # body {
+        #     margin: 0;
+        #     font-family: 'Inter', sans-serif;
+        #     background: var(--bg);
+        #     color: #fff;
+        #     min-height: 100vh;
+        # }
         body {
-            margin: 0;
-            font-family: 'Inter', sans-serif;
-            background: var(--bg);
-            color: #fff;
-            min-height: 100vh;
-        }
+    margin: 0;
+    font-family: 'Inter', sans-serif;
+    color: #fff;
+    min-height: 100vh;
+
+    background:
+        linear-gradient(
+            rgba(0,0,0,0.65),
+            rgba(0,0,0,0.75)
+        ),
+        url("https://images.unsplash.com/photo-1519608487953-e999c86e7455?auto=format&fit=crop&w=1920&q=80");
+
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    background-attachment: fixed;
+}
 
         ::-webkit-scrollbar { width: 8px; height: 8px; }
         ::-webkit-scrollbar-track { background: var(--bg); }
