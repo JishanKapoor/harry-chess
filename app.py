@@ -10,16 +10,16 @@ socketio = SocketIO(app, cors_allowed_origins="*", async_mode="threading")
 START_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
 
 SVG_TIME = '''<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"><circle cx="50" cy="50" r="45" fill="none" stroke="#eab308" stroke-width="3" stroke-dasharray="10 5"/><circle cx="50" cy="50" r="38" fill="none" stroke="#eab308" stroke-width="2"/><path d="M40 30 L60 30 L50 50 Z" fill="#fef08a"/><path d="M40 70 L60 70 L50 50 Z" fill="#ca8a04"/><path d="M35 25 L65 25 M35 75 L65 75" stroke="#eab308" stroke-width="4" stroke-linecap="round"/><circle cx="50" cy="50" r="8" fill="#fef08a"/></svg>'''
-SVG_AVADA = '''<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"><path d="M50 20 C30 20 20 40 20 50 C20 70 35 80 40 90 L60 90 C65 80 80 70 80 50 C80 40 70 20 50 20 Z" fill="#166534" stroke="#22c55e" stroke-width="3"/><path d="M35 45 Q40 40 45 45 M55 45 Q60 40 65 45" stroke="#4ade80" stroke-width="4" stroke-linecap="round" fill="none"/><path d="M50 60 L50 75" stroke="#4ade80" stroke-width="4" stroke-linecap="round"/><path d="M80 10 L40 50 L55 60 L20 100" stroke="#4ade80" stroke-width="5" fill="none" stroke-linecap="round" stroke-linejoin="round" filter="drop-shadow(0 0 8px #22c55e)"/></svg>'''
+SVG_AVADA = '''<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"><circle cx="50" cy="50" r="40" fill="none" stroke="#22c55e" stroke-width="4" stroke-dasharray="4 8" filter="drop-shadow(0 0 10px #22c55e)"/><path d="M60 15 L35 50 L55 55 L40 85 L75 45 L50 40 Z" fill="#4ade80" filter="drop-shadow(0 0 15px #22c55e)"/></svg>'''
 SVG_IMPERIO = '''<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"><path d="M10 50 Q50 10 90 50 Q50 90 10 50 Z" fill="none" stroke="#ec4899" stroke-width="4"/><circle cx="50" cy="50" r="18" fill="#f472b6" filter="drop-shadow(0 0 12px #ec4899)"/><circle cx="50" cy="50" r="6" fill="#831843"/><path d="M50 68 L35 100 M50 68 L50 100 M50 68 L65 100" stroke="#fbcfe8" stroke-width="2" stroke-dasharray="4 4"/></svg>'''
 SVG_SECTUM = '''<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"><path d="M20 20 L80 80 M30 10 L90 70 M10 30 L70 90" stroke="#d1d5db" stroke-width="4" stroke-linecap="round"/><path d="M50 50 Q60 70 50 80 Q40 70 50 50 Z" fill="#ef4444" filter="drop-shadow(0 0 5px #ef4444)"/><circle cx="70" cy="40" r="4" fill="#ef4444"/><circle cx="30" cy="70" r="3" fill="#ef4444"/></svg>'''
 SVG_FIENDFYRE = '''<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"><path d="M50 95 C20 95 25 60 40 40 C35 30 25 25 30 15 C45 25 45 40 50 30 C55 40 55 25 70 15 C75 25 65 30 60 40 C75 60 80 95 50 95 Z" fill="#ea580c" filter="drop-shadow(0 0 8px #f97316)"/><path d="M50 85 C35 85 38 65 45 50 C48 40 52 40 55 50 C62 65 65 85 50 85 Z" fill="#fb923c"/><circle cx="42" cy="65" r="3" fill="#7c2d12"/><circle cx="58" cy="65" r="3" fill="#7c2d12"/></svg>'''
-SVG_PORTKEY = '''<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"><path d="M30 80 C20 80 20 60 30 50 C30 30 50 20 60 20 C70 20 80 30 80 40 L60 80 Z" fill="#1e3a8a" stroke="#3b82f6" stroke-width="4" stroke-linejoin="round"/><path d="M25 80 L65 80" stroke="#60a5fa" stroke-width="6" stroke-linecap="round"/><circle cx="50" cy="50" r="40" fill="none" stroke="#60a5fa" stroke-width="2" stroke-dasharray="10 10" filter="drop-shadow(0 0 6px #3b82f6)"/><path d="M30 50 Q50 30 60 20" stroke="#93c5fd" stroke-width="2" fill="none"/></svg>'''
+SVG_PORTKEY = '''<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"><ellipse cx="50" cy="75" rx="35" ry="10" fill="none" stroke="#3b82f6" stroke-width="3" stroke-dasharray="8 4" filter="drop-shadow(0 0 10px #60a5fa)"/><path d="M60 75 L40 75 C30 75 25 65 30 55 L40 45 L40 25 C40 15 50 15 55 15 C60 15 65 20 65 25 L60 45 L70 55 C75 65 70 75 60 75 Z" fill="#78350f" stroke="#451a03" stroke-width="4"/><path d="M40 45 L50 55 L60 45" stroke="#451a03" stroke-width="3" fill="none"/><circle cx="55" cy="25" r="3" fill="#451a03"/></svg>'''
 SVG_EXPELLIARMUS = '''<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"><path d="M20 80 L80 20" stroke="#78350f" stroke-width="8" stroke-linecap="round"/><path d="M70 30 L80 20" stroke="#fbbf24" stroke-width="8" stroke-linecap="round"/><circle cx="80" cy="20" r="12" fill="none" stroke="#ef4444" stroke-width="3" filter="drop-shadow(0 0 8px #ef4444)"/><path d="M80 5 L80 15 M80 25 L80 35 M65 20 L75 20 M85 20 L95 20 M70 10 L75 15 M85 25 L90 30 M70 30 L75 25 M85 10 L90 15" stroke="#ef4444" stroke-width="3" stroke-linecap="round"/></svg>'''
 SVG_PROTEGO = '''<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"><path d="M50 10 L90 30 L90 60 Q90 90 50 95 Q10 90 10 60 L10 30 Z" fill="none" stroke="#3b82f6" stroke-width="6" filter="drop-shadow(0 0 10px #60a5fa)"/><path d="M50 20 L80 35 L80 55 Q80 80 50 85 Q20 80 20 55 L20 35 Z" fill="#1e3a8a" opacity="0.6"/><path d="M30 30 L70 70 M30 70 L70 30" stroke="#60a5fa" stroke-width="2" opacity="0.5"/></svg>'''
 SVG_ALOHOMORA = '''<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"><circle cx="30" cy="50" r="15" fill="none" stroke="#eab308" stroke-width="6" filter="drop-shadow(0 0 6px #facc15)"/><path d="M45 50 L85 50 M75 50 L75 65 M65 50 L65 65" stroke="#eab308" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/><circle cx="30" cy="50" r="5" fill="#ca8a04"/></svg>'''
 SVG_LEVIOSA = '''<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"><path d="M20 80 Q10 50 40 40 Q50 20 80 20 Q70 50 60 60 Q40 90 20 80 Z" fill="#f3f4f6" stroke="#9ca3af" stroke-width="2" filter="drop-shadow(0 0 10px #ffffff)"/><path d="M20 80 Q40 70 80 20" stroke="#d1d5db" stroke-width="2" fill="none"/><path d="M20 90 Q50 100 80 90" stroke="#e5e7eb" stroke-width="3" stroke-dasharray="5 5" fill="none"/></svg>'''
-SVG_BOMBARDA = '''<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"><path d="M50 10 L60 35 L85 30 L70 50 L90 70 L65 65 L50 90 L35 65 L10 70 L30 50 L15 30 L40 35 Z" fill="#ef4444" filter="drop-shadow(0 0 10px #dc2626)"/><path d="M50 25 L55 40 L70 40 L60 50 L65 65 L50 55 L35 65 L40 50 L30 40 L45 40 Z" fill="#facc15"/><circle cx="50" cy="50" r="5" fill="#ffffff"/></svg>'''
+SVG_BOMBARDA = '''<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"><path d="M50 10 L60 35 L85 30 L70 50 L90 70 L65 65 L50 90 L35 65 L10 70 L30 50 L15 30 L40 35 Z" fill="#ef4444" filter="drop-shadow(0 0 12px #dc2626)"/><path d="M50 25 L55 40 L70 40 L60 50 L65 65 L50 55 L35 65 L40 50 L30 40 L45 40 Z" fill="#facc15"/><circle cx="50" cy="50" r="8" fill="#ffffff" filter="drop-shadow(0 0 5px #fff)"/></svg>'''
 
 TIME_TURNER = {"id": "time", "name": "Time-Turner", "type": "instant", "desc": "Rewind the board to before opponent's last move.", "color": "#eab308", "image": SVG_TIME}
 
@@ -46,12 +46,9 @@ def fen_side_to_move(fen: str) -> str:
 
 def get_room(room_id: str):
     if room_id not in ROOMS:
-        # Generate entirely unique hands for both players from the pool of 10.
         shuffled_pool = random.sample(SPELLS_POOL, 10)
         hand_w = shuffled_pool[0:5] + [TIME_TURNER]
         hand_b = shuffled_pool[5:10] + [TIME_TURNER]
-        
-        # Shuffle so time turner isn't always at the end
         random.shuffle(hand_w)
         random.shuffle(hand_b)
 
@@ -179,20 +176,17 @@ def handle_spell_effect(data):
     if color is None or room["turn"] != color:
         return
         
-    # Prevent multi-use of spells
     if spell_id in room["used"][color]:
         return
 
     log_text = (data.get("log") or spell_id).strip()
 
-    # Time Turner Reversal Logic
     if spell_id == "time":
         if len(room["history"]) < 2:
             return 
-        room["history"].pop() # Erase the current state
-        fen = room["history"][-1] # Fallback to previous state
+        room["history"].pop()
+        fen = room["history"][-1]
         
-        # Turn swaps back to whoever's turn it was in that history frame
         room["turn"] = fen_side_to_move(fen) 
         log_text = "TIME-TURNER (Reversed Action)"
     else:
@@ -210,7 +204,6 @@ def handle_spell_effect(data):
                 else:
                     log_text = "EXPELLIARMUS (Nothing to disarm)"
 
-        # FORCE TURN SWAP for all standard spells so player cannot keep moving
         next_turn = "b" if color == "w" else "w"
         room["turn"] = next_turn
 
@@ -218,7 +211,7 @@ def handle_spell_effect(data):
         if len(parts) > 1:
             parts[1] = next_turn
         if len(parts) > 3:
-            parts[3] = "-"  # Clear en passant target
+            parts[3] = "-"  
         if color == "b" and len(parts) > 5:
             try:
                 parts[5] = str(int(parts[5]) + 1)
@@ -235,7 +228,6 @@ def handle_spell_effect(data):
         "log": log_text,
     }
     
-    # Do not append Time-Turner to history, so you can't rewind a rewind
     if spell_id != "time":
         room["history"].append(fen)
 
@@ -250,7 +242,6 @@ def handle_spell_effect(data):
         "room_state": room_snapshot(room_id),
     }, to=room_id)
 
-    # Sync spells just in case Expelliarmus removed a card
     emit("sync_spells", {
         "used": {
             "w": list(room["used"]["w"]),
@@ -297,14 +288,14 @@ HTML_PAYLOAD = r'''
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&family=Cinzel:wght@600;800&display=swap');
 
         :root {
-            --bg: #0f0c13;
-            --panel: #1a1523;
-            --panel-2: #15111c;
-            --line: #322841;
-            --muted: #8b7d9b;
+            --bg: #302e2b;
+            --panel: #262421;
+            --panel-2: #1f1e1b;
+            --line: #3f3e3b;
+            --muted: #a7a6a2;
+            --green: #81b64c;
             --light: #ebecd0;
             --dark: #739552;
-            --gold: #eab308;
         }
 
         * { box-sizing: border-box; }
@@ -312,7 +303,7 @@ HTML_PAYLOAD = r'''
         body {
             margin: 0;
             font-family: 'Inter', sans-serif;
-            background: radial-gradient(circle at center, #1b1525 0%, var(--bg) 100%);
+            background: var(--bg);
             color: #fff;
             min-height: 100vh;
         }
@@ -414,40 +405,19 @@ HTML_PAYLOAD = r'''
             pointer-events: none;
         }
 
-        /* Magical UI Enhancements */
         .grimoire-container {
             background-color: var(--panel-2);
-            background-image: radial-gradient(circle at center, rgba(30,25,40,0.8), rgba(15,10,20,1));
             border-left: 1px solid var(--line);
-            box-shadow: -10px 0 30px rgba(0,0,0,0.8);
-            position: relative;
-        }
-        
-        .grimoire-container::before {
-            content: '';
-            position: absolute;
-            inset: 0;
-            background: url('https://www.transparenttextures.com/patterns/cream-paper.png');
-            opacity: 0.03;
-            pointer-events: none;
+            box-shadow: -10px 0 30px rgba(0,0,0,0.6);
         }
 
         .spell-card {
-            background: linear-gradient(145deg, #241d2e 0%, #15111b 100%);
+            background: var(--panel);
             border: 2px solid var(--line);
             position: relative;
             overflow: hidden;
             transition: all 0.25s cubic-bezier(0.25, 0.8, 0.25, 1);
             border-radius: 12px;
-        }
-
-        .spell-card::after {
-            content: '';
-            position: absolute;
-            inset: 0;
-            border-radius: 10px;
-            box-shadow: inset 0 0 15px rgba(0,0,0,0.8);
-            pointer-events: none;
         }
 
         .spell-card:hover:not(.used) {
@@ -497,7 +467,7 @@ HTML_PAYLOAD = r'''
         }
 
         #move-history {
-            background: rgba(0,0,0,0.3);
+            background: rgba(0,0,0,0.2);
             color: #d1c5e0;
         }
     </style>
@@ -526,15 +496,15 @@ HTML_PAYLOAD = r'''
                     <div class="bg-[var(--panel)] border border-[var(--line)] p-6 rounded-2xl text-center max-w-[92%] shadow-2xl w-[420px]">
                         <div id="lobby-content">
                             <h2 class="text-xl font-bold mb-2 text-white">
-                                <i class="fa-solid fa-hat-wizard text-[var(--gold)] mr-2"></i>Match Lobby
+                                <i class="fa-solid fa-chess-knight text-[var(--green)] mr-2"></i>Match Lobby
                             </h2>
                             <p class="text-sm text-[var(--muted)] mb-4">Enter your name and join the arena.</p>
                             <div class="flex gap-2 mb-3">
                                 <input type="text" id="name-input" maxlength="24" placeholder="Your name"
-                                       class="w-full bg-black border border-[var(--line)] text-white p-3 rounded-lg text-sm focus:outline-none">
+                                       class="w-full bg-[var(--bg)] border border-[var(--line)] text-white p-3 rounded-lg text-sm focus:outline-none focus:border-[var(--green)]">
                             </div>
-                            <button id="join-btn" class="w-full bg-[var(--gold)] text-black font-extrabold px-4 py-3 rounded-lg text-sm transition hover:bg-yellow-400 shadow-lg uppercase tracking-wider">
-                                Enter Match
+                            <button id="join-btn" class="w-full bg-[var(--green)] text-white font-extrabold px-4 py-3 rounded-lg text-sm transition hover:bg-[#a3d160] shadow-lg uppercase tracking-wider">
+                                Join Match
                             </button>
                         </div>
                     </div>
@@ -544,14 +514,8 @@ HTML_PAYLOAD = r'''
                     <div class="bg-[var(--panel)] border border-[var(--line)] p-6 rounded-2xl text-center max-w-[92%] shadow-2xl w-[420px]">
                         <h2 class="text-xl font-bold mb-2 text-white"><i class="fa-solid fa-flag text-red-400 mr-2"></i>Game Over</h2>
                         <p id="game-over-text" class="text-sm text-[var(--muted)] mb-4">The game has ended.</p>
-                        <button onclick="window.location.reload()" class="bg-[var(--gold)] hover:bg-yellow-400 text-black font-extrabold px-4 py-3 rounded-lg text-sm transition w-full shadow-lg uppercase tracking-wider">Play Again</button>
+                        <button onclick="window.location.reload()" class="bg-[var(--green)] hover:bg-[#a3d160] text-white font-extrabold px-4 py-3 rounded-lg text-sm transition w-full shadow-lg uppercase tracking-wider">Play Again</button>
                     </div>
-                </div>
-
-                <div id="spell-banner" class="hidden absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-white px-6 py-4 rounded-2xl font-bold text-center z-50 shadow-[0_0_40px_rgba(0,0,0,0.8)] border border-white/20 w-[90%] max-w-[340px] backdrop-blur-md">
-                    <div id="spell-banner-title" class="text-2xl mb-1 drop-shadow-md" style="font-family: 'Cinzel', serif;">SPELL</div>
-                    <div id="spell-banner-desc" class="text-sm font-medium text-white/90 mb-4">Action</div>
-                    <button onclick="cancelSpell()" class="text-sm bg-black/50 hover:bg-black/70 px-4 py-2 border border-white/10 rounded-lg w-full transition uppercase tracking-wider font-bold">Cancel</button>
                 </div>
             </div>
 
@@ -565,26 +529,26 @@ HTML_PAYLOAD = r'''
                         <div class="flex items-center mt-0.5 min-h-[18px] flex-wrap gap-1" id="captured-bottom"></div>
                     </div>
                 </div>
-                <div class="text-xs font-mono font-bold bg-[#8b5cf6] text-white px-3 py-2 rounded shrink-0 shadow-lg" id="my-status">Thinking</div>
+                <div class="text-xs font-mono font-bold bg-[var(--green)] text-white px-3 py-2 rounded shrink-0 shadow-lg" id="my-status">Thinking</div>
             </div>
         </div>
     </div>
 
     <!-- Responsive Grimoire Panel for scrolling -->
-    <div class="w-full lg:w-[420px] xl:w-[460px] grimoire-container flex flex-col z-10 lg:h-screen lg:sticky top-0 pb-6 lg:pb-0">
-        <div class="p-5 border-b border-[var(--line)] bg-[rgba(0,0,0,0.4)] backdrop-blur-sm sticky top-0 z-20 flex justify-between items-center shadow-md">
-            <h3 class="font-bold text-sm text-[#e9d5ff] uppercase tracking-widest flex items-center" style="font-family: 'Cinzel', serif;">
-                <i class="fa-solid fa-book-journal-whills mr-2 text-[#a855f7]"></i>The Grimoire
+    <div class="w-full lg:w-[420px] xl:w-[460px] grimoire-container flex flex-col z-10 lg:h-screen lg:overflow-y-auto lg:sticky top-0 pb-6 lg:pb-0">
+        <div class="p-5 border-b border-[var(--line)] bg-[var(--panel)] sticky top-0 z-20 flex justify-between items-center shadow-md">
+            <h3 class="font-bold text-sm text-white uppercase tracking-widest flex items-center" style="font-family: 'Cinzel', serif;">
+                <i class="fa-solid fa-book-journal-whills mr-2 text-[var(--green)]"></i>The Grimoire
             </h3>
-            <span id="turn-indicator" class="text-[10px] font-bold px-2 py-1 rounded bg-black text-[var(--muted)] border border-[var(--line)]">WAITING</span>
+            <div id="turn-indicator" class="text-[10px] font-bold px-2 py-1 rounded bg-[var(--bg)] text-[var(--muted)] border border-[var(--line)]">WAITING</div>
         </div>
         
         <div id="spells-container" class="grid grid-cols-2 gap-3 p-4">
             <!-- Spells injected here via JS -->
         </div>
 
-        <div class="px-5 py-3 mt-auto border-t border-[var(--line)] flex justify-between items-center bg-[rgba(0,0,0,0.4)]">
-            <span class="font-bold text-xs text-[var(--muted)] uppercase tracking-widest"><i class="fa-solid fa-scroll mr-2"></i>History</span>
+        <div class="px-5 py-3 mt-auto border-t border-[var(--line)] flex justify-between items-center bg-[var(--panel)]">
+            <span class="font-bold text-xs text-[var(--muted)] uppercase tracking-widest"><i class="fa-solid fa-list-ul mr-2"></i>Match Log</span>
             <button id="resign-btn" class="text-xs text-red-400 hover:text-red-300 transition font-bold">
                 <i class="fa-solid fa-flag mr-1"></i>Resign
             </button>
@@ -678,8 +642,8 @@ function isMyTurn() {
 function setMoveLogFromSan(text, color, isSpell = false) {
     const history = document.getElementById("move-history");
     const safeText = (text || "").toString();
-    const style = isSpell ? "text-[#eab308] font-bold drop-shadow-md" : "text-[#e3e3e3]";
-    const icon = isSpell ? '<i class="fa-solid fa-hat-wizard text-[10px] mr-1 text-[#eab308]"></i>' : "";
+    const style = isSpell ? "text-[var(--green)] font-bold" : "text-[#e3e3e3]";
+    const icon = isSpell ? '<i class="fa-solid fa-wand-magic-sparkles text-[10px] mr-1 text-[var(--green)]"></i>' : "";
 
     if (color === "w") {
         history.insertAdjacentHTML("beforeend", `
@@ -794,14 +758,21 @@ function updateUI() {
     const turnIndicator = document.getElementById("turn-indicator");
 
     if (gameReady) {
-        turnIndicator.innerText = isMy ? "YOUR TURN" : "OPPONENT'S TURN";
-        turnIndicator.className = `text-[10px] font-bold px-2 py-1 rounded shadow border ${isMy ? "bg-[#6b21a8] text-[#e9d5ff] border-[#9333ea]" : "bg-black text-[var(--muted)] border-[var(--line)]"}`;
+        if (activeSpell) {
+            turnIndicator.innerText = `TARGET: ${activeSpell.name.toUpperCase()}`;
+            turnIndicator.className = "text-[10px] font-bold px-2 py-1 rounded shadow bg-[var(--green)] text-white animate-pulse cursor-pointer";
+            turnIndicator.onclick = cancelSpell;
+        } else {
+            turnIndicator.innerText = isMy ? "YOUR TURN" : "OPPONENT'S TURN";
+            turnIndicator.className = `text-[10px] font-bold px-2 py-1 rounded shadow border ${isMy ? "bg-[var(--green)] text-white border-transparent" : "bg-[var(--bg)] text-[var(--muted)] border-[var(--line)]"}`;
+            turnIndicator.onclick = null;
+        }
         
         myStatus.innerText = isMy ? "Thinking" : "Waiting";
-        myStatus.className = `text-xs font-mono font-bold px-3 py-2 rounded shadow-lg ${isMy ? "bg-[#8b5cf6] text-white" : "bg-black text-[var(--muted)] border border-[var(--line)]"}`;
+        myStatus.className = `text-xs font-mono font-bold px-3 py-2 rounded shadow-lg ${isMy ? "bg-[var(--green)] text-white" : "bg-[var(--bg)] text-[var(--muted)] border border-[var(--line)]"}`;
         
         oppStatus.innerText = !isMy ? "Thinking" : "Waiting";
-        oppStatus.className = `text-xs font-mono font-bold px-3 py-2 rounded shadow border ${!isMy ? "bg-[#8b5cf6] text-white border-transparent" : "bg-black text-[var(--muted)] border-[var(--line)]"}`;
+        oppStatus.className = `text-xs font-mono font-bold px-3 py-2 rounded shadow border ${!isMy ? "bg-[var(--green)] text-white border-transparent" : "bg-[var(--bg)] text-[var(--muted)] border-[var(--line)]"}`;
     }
 
     const handContainer = document.getElementById("spells-container");
@@ -822,11 +793,12 @@ function updateUI() {
                     ${spell.image}
                 </div>
                 <div class="text-[11px] lg:text-[13px] font-black tracking-wider uppercase mb-1 text-white text-center shadow-black drop-shadow-md border-b pb-1 w-full" style="border-color:${spell.color}88; font-family: 'Cinzel', serif;">${spell.name}</div>
-                <div class="text-[9px] lg:text-[10px] text-gray-400 leading-snug text-center px-1 mt-1 font-medium">${spell.desc}</div>
+                <div class="text-[9px] lg:text-[10px] text-[var(--muted)] leading-snug text-center px-1 mt-1 font-medium">${spell.desc}</div>
             `;
 
             card.onclick = () => {
                 if (isUsed || !gameReady || game.turn() !== myColor) return;
+                
                 if (isActive) {
                     cancelSpell();
                     return;
@@ -848,13 +820,6 @@ function updateUI() {
                 selectedSquare = null;
                 activeSpell = spell;
                 spellSourceSq = null;
-                const banner = document.getElementById("spell-banner");
-                document.getElementById("spell-banner-title").innerText = spell.name;
-                document.getElementById("spell-banner-title").style.color = spell.color;
-                document.getElementById("spell-banner-desc").innerText = spell.desc;
-                banner.style.background = `linear-gradient(135deg, ${spell.color}44, rgba(0,0,0,0.8) 60%)`;
-                banner.style.border = `1px solid ${spell.color}88`;
-                banner.classList.remove("hidden");
                 updateUI();
             };
 
@@ -869,7 +834,6 @@ function cancelSpell() {
     activeSpell = null;
     spellSourceSq = null;
     selectedSquare = null;
-    document.getElementById("spell-banner").classList.add("hidden");
     updateUI();
 }
 
@@ -896,7 +860,6 @@ function handleSquareClick(sq) {
         if (move) {
             const san = move.san;
             
-            // Optimistic UI updates (fixes lag/flicker)
             game.move({ from: selectedSquare, to: sq, promotion: "q" });
             if (san.includes("x")) sounds.capture.play().catch(()=>{});
             else sounds.move.play().catch(()=>{});
@@ -936,7 +899,6 @@ function processSpellClick(sq) {
             break;
             
         case "bombarda":
-            // Destroy target AND 4 adjacent pieces (if not kings)
             const fileIdxB = sq.charCodeAt(0);
             const rankIdxB = parseInt(sq[1], 10);
             const blastRadius = [
@@ -999,7 +961,7 @@ function processSpellClick(sq) {
                 const fDist = Math.abs(source.charCodeAt(0) - sq.charCodeAt(0));
                 const rDist = Math.abs(parseInt(source[1], 10) - parseInt(sq[1], 10));
 
-                if (activeSpell.id === "portkey" && p) return; // Must be empty square
+                if (activeSpell.id === "portkey" && p) return; 
                 if (activeSpell.id === "leviosa" && ((fDist > 1 || rDist > 1) || p)) return;
                 if (activeSpell.id === "alohomora") {
                     const ownHalf = myColor === "w" ? parseInt(sq[1], 10) <= 4 : parseInt(sq[1], 10) >= 5;
@@ -1065,11 +1027,11 @@ function joinGame() {
     pendingJoin = true;
     socket.emit("join_room", { room, player_id: playerId, player_name: playerName });
 
-    // Update lobby UI to waiting state
+    // Instantly update UI to waiting state
     document.getElementById("lobby-content").innerHTML = `
         <div class="py-4">
             <div class="inline-block mb-4">
-                <svg class="animate-spin h-10 w-10 text-[var(--gold)] mx-auto" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <svg class="animate-spin h-10 w-10 text-[var(--green)] mx-auto" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                     <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
                     <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                 </svg>
@@ -1077,8 +1039,8 @@ function joinGame() {
             <h2 class="text-xl font-bold mb-2 text-white">Waiting for Opponent...</h2>
             <p class="text-sm text-[var(--muted)]">Send this link to a friend to begin.</p>
             <div class="flex gap-2 mt-5 max-w-[300px] mx-auto">
-                <input type="text" id="share-link-waiting" readonly value="${location.href}" class="w-full bg-black border border-[var(--line)] text-[var(--muted)] p-2 rounded-lg text-xs font-mono focus:outline-none">
-                <button onclick="copyWaitingLink()" class="bg-[var(--gold)] hover:bg-yellow-400 text-black font-extrabold px-3 rounded-lg text-sm transition shadow-lg">
+                <input type="text" id="share-link-waiting" readonly value="${location.href}" class="w-full bg-[var(--bg)] border border-[var(--line)] text-[var(--muted)] p-2 rounded-lg text-xs font-mono focus:outline-none">
+                <button onclick="copyWaitingLink()" class="bg-[var(--green)] hover:bg-[#a3d160] text-white font-extrabold px-3 rounded-lg text-sm transition shadow-lg">
                     <i class="fa-solid fa-copy"></i>
                 </button>
             </div>
@@ -1100,6 +1062,12 @@ document.getElementById("name-input")?.addEventListener("keydown", (e) => {
 socket.on("connect", () => {
     if(document.getElementById("share-link")) {
         document.getElementById("share-link").value = location.href;
+        
+        document.getElementById("copy-btn").onclick = async () => {
+            const input = document.getElementById("share-link");
+            input.select();
+            try { await navigator.clipboard.writeText(input.value); } catch (e) {}
+        };
     }
     const saved = localStorage.getItem("wizard_chess_name");
     if (saved && document.getElementById("name-input")) {
@@ -1167,7 +1135,6 @@ socket.on("board_update", (data) => {
     if (!isMyNormalMove) {
         if (data.fen) game.load(data.fen);
         
-        // Ensure visual DOM update occurs slightly before audio
         updateUI(); 
 
         requestAnimationFrame(() => {
