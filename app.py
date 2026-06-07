@@ -318,7 +318,7 @@ HTML_PAYLOAD = r'''
             rgba(0,0,0,0.65),
             rgba(0,0,0,0.75)
         ),
-        url("https://unsplash.com/photos/brown-concrete-building-during-night-time-5qUJfO4NU4o");
+        url("https://images6.alphacoders.com/130/thumb-1920-1305167.jpg");
 
     background-size: cover;
     background-position: center;
