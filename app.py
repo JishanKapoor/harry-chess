@@ -1,4 +1,3 @@
-
 import os
 import random
 from flask import Flask, render_template_string, request
@@ -216,6 +215,11 @@ def handle_spell_effect(data):
                 pass
         fen = " ".join(parts)
 
+    # Check for King Death via Spells
+    board_part = fen.split(" ")[0]
+    w_king_alive = "K" in board_part
+    b_king_alive = "k" in board_part
+    
     room["used"][color].add(spell_id)
     room["fen"] = fen
     room["last_action"] = {
@@ -227,7 +231,7 @@ def handle_spell_effect(data):
 
     if spell_id != "time":
         room["history"].append(fen)
-
+        
     emit("board_update", {
         "fen": room["fen"],
         "spell_id": spell_id,
@@ -238,8 +242,48 @@ def handle_spell_effect(data):
         "used_spell_id": spell_id,
         "room_state": room_snapshot(room_id),
     }, to=room_id)
-
+    
     emit("sync_spells", {"used": {"w": list(room["used"]["w"]), "b": list(room["used"]["b"])}}, to=room_id)
+
+    # If Kings were killed, end the game from the backend immediately
+    if not w_king_alive or not b_king_alive:
+        room["game_over"] = True
+        if not w_king_alive and not b_king_alive:
+            room["winner"] = "draw"
+            reason = "Mutual Destruction! Both Kings have fallen beyond the veil."
+        elif not w_king_alive:
+            room["winner"] = "b"
+            reason = "The White King has been obliterated by a dark curse! Black wins!"
+        else:
+            room["winner"] = "w"
+            reason = "The Black King has been obliterated by a dark curse! White wins!"
+            
+        emit("game_over", {
+            "winner": room["winner"],
+            "winner_name": room["player_names"].get(room["winner"], "Opponent") if room["winner"] != "draw" else "Nobody",
+            "reason": reason,
+            "room_state": room_snapshot(room_id),
+        }, to=room_id)
+
+@socketio.on("claim_win")
+def handle_claim_win(data):
+    room_id = data.get("room")
+    winner = data.get("winner")
+    reason = data.get("reason")
+
+    room = ROOMS.get(room_id)
+    if not room or room["game_over"]:
+        return
+
+    room["game_over"] = True
+    room["winner"] = winner
+
+    emit("game_over", {
+        "winner": winner,
+        "winner_name": room["player_names"].get(winner, "Opponent") if winner != "draw" else "Nobody",
+        "reason": reason,
+        "room_state": room_snapshot(room_id),
+    }, to=room_id)
 
 @socketio.on("resign")
 def handle_resign(data):
@@ -257,11 +301,14 @@ def handle_resign(data):
     room["game_over"] = True
     room["winner"] = "b" if color == "w" else "w"
     room["last_action"] = {"type": "resign", "color": color}
+    
+    loser_name = room["player_names"].get(color, "Opponent")
 
     emit("game_over", {
         "winner": room["winner"],
         "winner_name": room["player_names"].get(room["winner"], "Opponent"),
         "resigned_color": color,
+        "reason": f"{loser_name} has fled via Floo Powder!",
         "room_state": room_snapshot(room_id),
     }, to=room_id)
 
@@ -369,6 +416,15 @@ HTML_PAYLOAD = r'''
 
         .sq-selected { position:absolute; inset:0; background: rgba(20,85,30,0.5); pointer-events:none; }
         .sq-highlight { position:absolute; inset:0; background: rgba(255,255,51,0.35); pointer-events:none; }
+        
+        /* Check UI from Chess.com */
+        .sq-check { 
+            position:absolute; 
+            inset:0; 
+            background: radial-gradient(ellipse at center, rgba(235, 97, 80, 0.9) 0%, transparent 75%); 
+            pointer-events:none; 
+            z-index: 5;
+        }
 
         .move-dot {
             width: 32%;
@@ -497,7 +553,7 @@ HTML_PAYLOAD = r'''
                 <div id="waiting-overlay" class="overlay">
                     <div class="bg-[var(--panel)] border border-[var(--line)] p-6 rounded-2xl text-center max-w-[92%] shadow-2xl w-[420px]">
                         <div id="lobby-content">
-                            <h2 class="text-xl font-bold mb-2 text-white">
+                            <h2 class="text-xl font-bold mb-2 text-white" style="font-family: 'Cinzel', serif;">
                                 <i class="fa-solid fa-chess-knight text-[var(--green)] mr-2"></i>Match Lobby
                             </h2>
                             <p class="text-sm text-[var(--muted)] mb-4">Enter your name and join the arena.</p>
@@ -514,8 +570,8 @@ HTML_PAYLOAD = r'''
 
                 <div id="game-over-overlay" class="overlay hidden">
                     <div class="bg-[var(--panel)] border border-[var(--line)] p-6 rounded-2xl text-center max-w-[92%] shadow-2xl w-[420px]">
-                        <h2 class="text-xl font-bold mb-2 text-white"><i class="fa-solid fa-flag text-red-400 mr-2"></i>Game Over</h2>
-                        <p id="game-over-text" class="text-sm text-[var(--muted)] mb-4">The game has ended.</p>
+                        <h2 class="text-2xl font-bold mb-2 text-white" style="font-family: 'Cinzel', serif;"><i class="fa-solid fa-flag text-red-400 mr-2"></i>Game Over</h2>
+                        <p id="game-over-text" class="text-base text-[var(--muted)] mb-6 mt-3 leading-relaxed">The game has ended.</p>
                         <button onclick="window.location.reload()" class="bg-[var(--green)] hover:bg-[#a3d160] text-white font-extrabold px-4 py-3 rounded-lg text-sm transition w-full shadow-lg uppercase tracking-wider">Play Again</button>
                     </div>
                 </div>
@@ -745,6 +801,9 @@ function updateUI() {
     const ranks = ["8","7","6","5","4","3","2","1"];
     const legalMoves = selectedSquare ? game.moves({ square: selectedSquare, verbose: true }) : [];
 
+    const isCheck = game.in_check();
+    const turnColor = game.turn();
+
     for (const r of ranks) {
         for (const f of files) {
             const sq = f + r;
@@ -764,14 +823,21 @@ function updateUI() {
                 pieceEl.className = "piece";
             }
 
-            hlEl.className = "sq-highlight";
-            hlEl.style.display = "none";
-            dotEl.style.display = "none";
+            // RED KING LOGIC (Issue 1)
+            let isKingInCheck = (p && p.type === 'k' && p.color === turnColor && isCheck);
 
             if (sq === selectedSquare || sq === spellSourceSq) {
                 hlEl.className = "sq-selected";
                 hlEl.style.display = "block";
+            } else if (isKingInCheck) {
+                hlEl.className = "sq-check";
+                hlEl.style.display = "block";
+            } else {
+                hlEl.className = "sq-highlight";
+                hlEl.style.display = "none";
             }
+
+            dotEl.style.display = "none";
 
             if (selectedSquare) {
                 const isTarget = legalMoves.some(m => m.to === sq);
@@ -933,6 +999,10 @@ function processSpellClick(sq) {
                     temp.put({ type: "p", color: opp }, sq);
                 }
                 nextFen = temp.fen();
+            } else if (p && p.color === opp && p.type === "k") {
+                // If aiming at king, allow the kill (handled by backend)
+                temp.remove(sq);
+                nextFen = temp.fen();
             }
             break;
 
@@ -951,7 +1021,7 @@ function processSpellClick(sq) {
                 blastRadius.forEach(targetSq => {
                     if (targetSq.charCodeAt(0) >= 97 && targetSq.charCodeAt(0) <= 104 && parseInt(targetSq[1],10) >= 1 && parseInt(targetSq[1],10) <= 8) {
                         const tp = temp.get(targetSq);
-                        if (tp && tp.type !== "k") {
+                        if (tp) {
                             temp.remove(targetSq);
                             destroyedSomething = true;
                         }
@@ -970,7 +1040,7 @@ function processSpellClick(sq) {
                         if (f < 97 || f > 104 || r < 1 || r > 8) continue;
                         const targetSq = String.fromCharCode(f) + r;
                         const targetPiece = temp.get(targetSq);
-                        if (targetPiece && targetPiece.type !== "k") temp.remove(targetSq);
+                        if (targetPiece) temp.remove(targetSq);
                     }
                 }
                 nextFen = temp.fen();
@@ -1067,7 +1137,7 @@ async function joinGame() {
                     <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                 </svg>
             </div>
-            <h2 class="text-xl font-bold mb-2 text-white">Waiting for Opponent...</h2>
+            <h2 class="text-xl font-bold mb-2 text-white" style="font-family: 'Cinzel', serif;">Waiting for Opponent...</h2>
             <p class="text-sm text-[var(--muted)]">Send this link to a friend to begin.</p>
             <div class="flex gap-2 mt-5 max-w-[300px] mx-auto">
                 <input type="text" id="share-link-waiting" readonly value="${location.href}" class="w-full bg-[var(--bg)] border border-[var(--line)] text-[var(--muted)] p-2 rounded-lg text-xs font-mono focus:outline-none">
@@ -1121,7 +1191,7 @@ socket.on("role_assigned", (data) => {
     }
 
     if (data.snapshot && data.snapshot.fen) {
-        game.load(data.snapshot.fen);
+        try { game.load(data.snapshot.fen); } catch(e){}
     }
 
     setBoardOrientation();
@@ -1156,7 +1226,9 @@ socket.on("board_update", (data) => {
     const isMyNormalMove = (data.color === myColor && !data.is_spell);
 
     if (!isMyNormalMove) {
-        if (data.fen) game.load(data.fen);
+        if (data.fen) {
+            try { game.load(data.fen); } catch(e){}
+        }
         updateUI();
 
         requestAnimationFrame(() => {
@@ -1172,7 +1244,7 @@ socket.on("board_update", (data) => {
         }
     } else {
         if (data.fen && game.fen() !== data.fen) {
-            game.load(data.fen);
+            try { game.load(data.fen); } catch(e){}
         }
         updateUI();
     }
@@ -1185,6 +1257,23 @@ socket.on("board_update", (data) => {
         document.getElementById("waiting-overlay").style.display = "none";
         gameReady = true;
     }
+
+    // Standard Checkmate evaluation by the mover
+    if (data.color === myColor && !data.room_state.game_over) {
+        if (game.in_checkmate()) {
+            const winner = game.turn() === 'w' ? 'b' : 'w';
+            const winnerColor = winner === 'w' ? 'White' : 'Black';
+            socket.emit("claim_win", {
+                room, player_id: playerId, winner,
+                reason: `Checkmate! A brilliant tactical hex! ${winnerColor} claims the House Cup!`
+            });
+        } else if (game.in_draw() || game.in_stalemate() || game.in_threefold_repetition()) {
+            socket.emit("claim_win", {
+                room, player_id: playerId, winner: "draw",
+                reason: "Draw! A stalemate as stubborn as a Troll in the dungeons."
+            });
+        }
+    }
 });
 
 socket.on("game_over", (data) => {
@@ -1192,7 +1281,23 @@ socket.on("game_over", (data) => {
     const text = document.getElementById("game-over-text");
     overlay.classList.remove("hidden");
     const youWon = (data.winner === myColor);
-    text.innerText = youWon ? "You won by resignation." : `Game over. ${data.winner_name || "Opponent"} won by resignation.`;
+    
+    let displayReason = data.reason || "The game has ended.";
+    
+    let headerHtml = "";
+    if (data.winner === "draw") {
+        headerHtml = `<i class="fa-solid fa-handshake text-yellow-400 mr-2"></i>Draw!`;
+    } else if (youWon) {
+        headerHtml = `<i class="fa-solid fa-bolt text-yellow-400 mr-2"></i>Victory!`;
+    } else if (myColor !== "s") {
+        headerHtml = `<i class="fa-solid fa-skull text-red-500 mr-2"></i>Defeat!`;
+    } else {
+        headerHtml = `<i class="fa-solid fa-flag text-red-400 mr-2"></i>Game Over`;
+    }
+    
+    overlay.querySelector('h2').innerHTML = headerHtml;
+    text.innerHTML = `<span class="block text-white font-semibold mb-2" style="font-family: 'Cinzel', serif; font-size: 1.1rem;">${displayReason}</span>`;
+    
     gameReady = false;
     updateUI();
 });
