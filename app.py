@@ -197,10 +197,9 @@ def handle_spell_effect(data):
     log_text = (data.get("log") or spell_id).strip()
 
     if spell_id == "time":
-        if len(room["history"]) < 3:
+        if len(room["history"]) < 2:
             return
-        # Pop twice to revert back to the start of caster's previous turn
-        room["history"].pop()
+        # Pop once to revert back to before opponent's last move
         room["history"].pop()
         fen = room["history"][-1]
         room["turn"] = fen_side_to_move(fen)
@@ -714,6 +713,30 @@ function toggleMusic() {
 musicToggle.addEventListener("click", toggleMusic);
 setMusicButton();
 
+// -------------------------------------------------------------
+// FIX: Clean FEN String (Ensures pieces destroyed by spells don't 
+// create invalid castling/en-passant FENs causing UI failure)
+// -------------------------------------------------------------
+function cleanFen(fen, chessObj) {
+    let parts = fen.split(" ");
+    let castling = parts[2];
+    if (castling !== "-") {
+        let newCastling = "";
+        const e1 = chessObj.get("e1"), a1 = chessObj.get("a1"), h1 = chessObj.get("h1");
+        const e8 = chessObj.get("e8"), a8 = chessObj.get("a8"), h8 = chessObj.get("h8");
+
+        if (castling.includes("K") && e1 && e1.type === "k" && e1.color === "w" && h1 && h1.type === "r" && h1.color === "w") newCastling += "K";
+        if (castling.includes("Q") && e1 && e1.type === "k" && e1.color === "w" && a1 && a1.type === "r" && a1.color === "w") newCastling += "Q";
+        if (castling.includes("k") && e8 && e8.type === "k" && e8.color === "b" && h8 && h8.type === "r" && h8.color === "b") newCastling += "k";
+        if (castling.includes("q") && e8 && e8.type === "k" && e8.color === "b" && a8 && a8.type === "r" && a8.color === "b") newCastling += "q";
+
+        parts[2] = newCastling || "-";
+    }
+    // Always clear en passant marker to avoid validation failure when a target pawn was destroyed
+    parts[3] = "-"; 
+    return parts.join(" ");
+}
+
 function buildBoardDOM() {
     const boardEl = document.getElementById("board");
     boardEl.innerHTML = "";
@@ -928,8 +951,8 @@ function updateUI() {
                     return;
                 }
                 
-                // EDGE CASE FIX: Prevent casting Time-Turner if history is too short
-                if (spell.id === "time" && historyLen < 3) {
+                // EDGE CASE FIX: History length requirement is >= 2 (Allows use after 1 move)
+                if (spell.id === "time" && historyLen < 2) {
                     const turnInd = document.getElementById("turn-indicator");
                     turnInd.innerText = "NOT ENOUGH HISTORY";
                     turnInd.className = "text-[10px] font-bold px-2 py-1 rounded shadow bg-red-500 text-white animate-pulse";
@@ -1143,6 +1166,9 @@ function processSpellClick(sq) {
     }
 
     if (nextFen) {
+        // FIXED BUG: Removing pieces causes structural mismatch in FEN string if castling/en-passant pointers remain.
+        nextFen = cleanFen(nextFen, temp); 
+        
         // EDGE CASE FIX: Verify spell doesn't leave your OWN King in Check (unless it obliterates the enemy king entirely)
         if (activeSpell.id !== "time") {
             const fenKings = nextFen.split(" ")[0];
@@ -1160,7 +1186,7 @@ function processSpellClick(sq) {
                 }
             }
         }
-    
+        
         usedSpells.add(activeSpell.id);
         socket.emit("spell_effect", {
             room,
