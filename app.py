@@ -86,6 +86,12 @@ def player_color(room, player_id):
 def index():
     return render_template_string(HTML_PAYLOAD)
 
+@app.route("/room/<room_id>")
+@app.route("/room/<room_id>/")
+def room_page(room_id):
+    # Serve the same app for shareable room links.
+    return render_template_string(HTML_PAYLOAD)
+
 @socketio.on("join_room")
 def handle_join(data):
     room_id = data.get("room")
@@ -530,13 +536,32 @@ if (!playerId) {
 }
 
 // Global room ID
-let room = (() => {
+function getRoomFromUrl() {
     const params = new URLSearchParams(location.search);
-    let r = params.get("room");
+    const queryRoom = (params.get("room") || "").trim();
+    if (queryRoom) return queryRoom.toUpperCase();
+
+    const parts = location.pathname.split("/").filter(Boolean);
+    const roomIndex = parts.indexOf("room");
+    if (roomIndex !== -1 && parts[roomIndex + 1]) {
+        return parts[roomIndex + 1].trim().toUpperCase();
+    }
+
+    return "";
+}
+
+function setRoomInUrl(code) {
+    const safe = (code || "").trim().toUpperCase();
+    if (!safe) return;
+    history.replaceState({}, "", `${location.origin}/room/${encodeURIComponent(safe)}`);
+}
+
+let room = (() => {
+    let r = getRoomFromUrl();
     if (!r) {
         r = Math.random().toString(36).slice(2, 8).toUpperCase();
-        history.replaceState({}, "", `${location.pathname}?room=${r}`);
     }
+    setRoomInUrl(r);
     return r.toUpperCase();
 })();
 
@@ -1017,11 +1042,17 @@ function joinGame() {
 
 window.copyWaitingLink = async () => {
     const input = document.getElementById("share-link-waiting");
-    if(!input) return;
-    input.type = "text"; 
-    input.select();
-    try { await navigator.clipboard.writeText(input.value); } catch (e) {}
-    input.type = "hidden";
+    if (!input) return;
+    const value = input.value || `${location.origin}/room/${encodeURIComponent(room)}`;
+    try {
+        await navigator.clipboard.writeText(value);
+    } catch (e) {
+        input.type = "text";
+        input.value = value;
+        input.select();
+        try { document.execCommand("copy"); } catch (err) {}
+        input.type = "hidden";
+    }
 }
 
 document.getElementById("join-btn").onclick = joinGame;
@@ -1032,6 +1063,18 @@ if(document.getElementById("room-input")) {
     document.getElementById("room-input").addEventListener("keydown", (e) => {
         if (e.key === "Enter") joinGame();
     });
+}
+
+function maybeAutoJoin() {
+    const savedName = (localStorage.getItem("wizard_chess_name") || "").trim();
+    const joinableRoom = getRoomFromUrl() || room;
+    if (savedName && joinableRoom && !pendingJoin) {
+        const nameInput = document.getElementById("name-input");
+        const roomInput = document.getElementById("room-input");
+        if (nameInput && !nameInput.value) nameInput.value = savedName;
+        if (roomInput && !roomInput.value) roomInput.value = joinableRoom;
+        joinGame();
+    }
 }
 
 socket.on("connect", () => {
@@ -1046,6 +1089,7 @@ socket.on("connect", () => {
     if (!pendingJoin) {
         document.getElementById("waiting-overlay").style.display = "flex";
     }
+    maybeAutoJoin();
 });
 
 socket.on("role_assigned", (data) => {
