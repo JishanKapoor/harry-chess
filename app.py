@@ -70,6 +70,7 @@ def get_room(room_id: str):
             "history": [START_FEN],
             "player_ids": {"w": None, "b": None},
             "player_names": {"w": "White", "b": "Black"},
+            "name_to_color": {},  # Persistent name -> color for rejoining across devices/tabs
             "hands": {"w": hand_w, "b": hand_b},
             "used": {"w": set(), "b": set()},
             "game_over": False,
@@ -116,21 +117,35 @@ def handle_join(data):
     room = get_room(room_id)
     color = player_color(room, player_id)
 
-    if color is None:
-        if room["player_ids"]["w"] is None and room["player_ids"]["b"] is None:
-            color = random.choice(["w", "b"])
-            room["player_ids"][color] = player_id
-            room["player_names"][color] = player_name
-        elif room["player_ids"]["w"] is None:
-            color = "w"
-            room["player_ids"]["w"] = player_id
-            room["player_names"]["w"] = player_name
-        elif room["player_ids"]["b"] is None:
-            color = "b"
-            room["player_ids"]["b"] = player_id
-            room["player_names"]["b"] = player_name
-        else:
-            color = "s"
+    # === PERSISTENT PLAYER IDENTITY BY NAME ===
+    # If someone uses the same name they used before in this room, give them back their old color
+    # even if they closed the tab or joined from another device.
+    name_to_color = room.setdefault("name_to_color", {})
+    if player_name and player_name in name_to_color:
+        previous_color = name_to_color[player_name]
+        color = previous_color
+        room["player_ids"][color] = player_id
+        room["player_names"][color] = player_name
+    else:
+        if color is None:
+            if room["player_ids"]["w"] is None and room["player_ids"]["b"] is None:
+                color = random.choice(["w", "b"])
+                room["player_ids"][color] = player_id
+                room["player_names"][color] = player_name
+            elif room["player_ids"]["w"] is None:
+                color = "w"
+                room["player_ids"]["w"] = player_id
+                room["player_names"]["w"] = player_name
+            elif room["player_ids"]["b"] is None:
+                color = "b"
+                room["player_ids"]["b"] = player_id
+                room["player_names"]["b"] = player_name
+            else:
+                color = "s"
+
+    if color in ("w", "b") and player_name:
+        room["player_names"][color] = player_name
+        name_to_color[player_name] = color
 
     join_room(room_id)
 
@@ -745,16 +760,11 @@ function toggleMusic() {
 musicToggle.addEventListener("click", toggleMusic);
 setMusicButton();
 
-// Helper: Ensure any pawn placed on the last rank via spell is promoted to Queen
-// This keeps positions legal when using Portkey, Alohomora, Leviosa, Imperio etc.
 function ensurePromotion(fenStr) {
     if (!fenStr) return fenStr;
     let parts = fenStr.split(' ');
-    let board = parts[0];
-    let ranks = board.split('/');
-    // ranks[0] = rank 8 (white pawns promote)
+    let ranks = parts[0].split('/');
     ranks[0] = ranks[0].replace(/P/g, 'Q');
-    // ranks[7] = rank 1 (black pawns promote)
     ranks[7] = ranks[7].replace(/p/g, 'q');
     parts[0] = ranks.join('/');
     return parts.join(' ');
@@ -944,7 +954,6 @@ function updateUI() {
         oppStatus.className = `text-xs font-mono font-bold px-3 py-2 rounded shadow border ${!isMy ? "bg-[var(--green)] text-white border-transparent" : "bg-[var(--bg)] text-[var(--muted)] border-[var(--line)]"}`;
     }
 
-    // Your spells (right side)
     const handContainer = document.getElementById("spells-container");
     handContainer.innerHTML = "";
 
@@ -1005,7 +1014,6 @@ function updateUI() {
         });
     }
 
-    // OPPONENT'S GRIMOIRE (LEFT - VIEW ONLY)
     const oppContainer = document.getElementById("opp-spells-container");
     if (oppContainer && oppHand && oppHand.length > 0) {
         oppContainer.innerHTML = "";
@@ -1057,7 +1065,7 @@ function handleSquareClick(sq) {
 
     if (selectedSquare) {
         const temp = new Chess(game.fen());
-        const move = temp.move({ from: selectedSquare, to: sq, promotion: "q" }); // Normal moves auto-promote to Queen
+        const move = temp.move({ from: selectedSquare, to: sq, promotion: "q" });
         if (move) {
             const san = move.san;
 
@@ -1198,9 +1206,6 @@ function processSpellClick(sq) {
             break;
     }
 
-    // === PROMOTION SAFETY FOR SPELLS ===
-    // Any drag spell (Portkey, Alohomora, Leviosa, Imperio) can place a pawn on rank 8/1.
-    // We auto-promote to Queen to keep the position legal (same as normal moves).
     if (nextFen && (activeSpell.type === "drag_own" || activeSpell.type === "drag_enemy")) {
         nextFen = ensurePromotion(nextFen);
     }
