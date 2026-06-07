@@ -4,22 +4,26 @@ from flask import Flask, render_template_string, request
 from flask_socketio import SocketIO, join_room, emit
 
 app = Flask(__name__)
-app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "wizard_chess_secret_v3")
+app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "wizard_chess_secret_v4")
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode="threading")
 
 START_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
 
+# Custom SVG Artwork for Spells
+SVG_TIME = '''<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"><circle cx="50" cy="50" r="45" fill="none" stroke="#eab308" stroke-width="3" stroke-dasharray="10 5"/><circle cx="50" cy="50" r="38" fill="none" stroke="#eab308" stroke-width="2"/><path d="M40 30 L60 30 L50 50 Z" fill="#fef08a"/><path d="M40 70 L60 70 L50 50 Z" fill="#ca8a04"/><path d="M35 25 L65 25 M35 75 L65 75" stroke="#eab308" stroke-width="4" stroke-linecap="round"/><circle cx="50" cy="50" r="8" fill="#fef08a"/></svg>'''
+SVG_AVADA = '''<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"><path d="M80 20 L40 50 L55 60 L20 90" stroke="#22c55e" stroke-width="6" fill="none" stroke-linecap="round" stroke-linejoin="round" filter="drop-shadow(0 0 8px #22c55e)"/><circle cx="30" cy="30" r="15" fill="none" stroke="#4ade80" stroke-width="2"/><path d="M25 25 Q30 20 35 25 M25 35 Q30 40 35 35" stroke="#4ade80" stroke-width="2" fill="none"/></svg>'''
+SVG_IMPERIO = '''<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"><path d="M10 50 Q50 10 90 50 Q50 90 10 50 Z" fill="none" stroke="#ec4899" stroke-width="4"/><circle cx="50" cy="50" r="15" fill="#f472b6" filter="drop-shadow(0 0 10px #ec4899)"/><circle cx="50" cy="50" r="5" fill="#831843"/><path d="M50 65 L40 90 M50 65 L50 95 M50 65 L60 90" stroke="#fbcfe8" stroke-width="2" stroke-dasharray="4 4"/></svg>'''
+SVG_SECTUM = '''<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"><path d="M20 20 L80 80 M30 10 L90 70 M10 30 L70 90" stroke="#d1d5db" stroke-width="4" stroke-linecap="round"/><path d="M50 50 Q60 70 50 80 Q40 70 50 50 Z" fill="#ef4444" filter="drop-shadow(0 0 5px #ef4444)"/><path d="M70 30 Q75 45 70 50 Q65 45 70 30 Z" fill="#ef4444"/></svg>'''
+SVG_FIENDFYRE = '''<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"><path d="M50 90 Q20 90 30 60 Q40 30 50 10 Q60 30 70 60 Q80 90 50 90 Z" fill="#ea580c"/><path d="M50 85 Q30 85 38 65 Q45 45 50 25 Q55 45 62 65 Q70 85 50 85 Z" fill="#fb923c"/><path d="M50 75 Q40 75 44 60 Q48 45 50 35 Q52 45 56 60 Q60 75 50 75 Z" fill="#fef08a"/><circle cx="42" cy="55" r="3" fill="#7c2d12"/><circle cx="58" cy="55" r="3" fill="#7c2d12"/></svg>'''
+SVG_ACCIO = '''<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"><path d="M80 80 L30 30" stroke="#78350f" stroke-width="8" stroke-linecap="round"/><path d="M30 30 L20 20" stroke="#fcd34d" stroke-width="6" stroke-linecap="round"/><path d="M20 20 Q40 5 60 20 M30 30 Q50 15 70 30 M40 40 Q60 25 80 40" fill="none" stroke="#38bdf8" stroke-width="3" stroke-dasharray="6 4" filter="drop-shadow(0 0 5px #38bdf8)"/></svg>'''
+
 SPELLS = [
-    {"id": "avada", "name": "Avada Kedavra", "rarity": "Legendary", "icon": "fa-bolt", "type": "enemy", "desc": "Click an enemy piece to destroy it.", "color": "#f59e0b"},
-    {"id": "time", "name": "Time-Turner", "rarity": "Legendary", "icon": "fa-hourglass-half", "type": "instant", "desc": "Rewind the board one move.", "color": "#8b5cf6"},
-    {"id": "imperio", "name": "Imperio", "rarity": "Rare", "icon": "fa-eye", "type": "drag_enemy", "desc": "Move an enemy piece as your own.", "color": "#14b8a6"},
-    {"id": "sectum", "name": "Sectumsempra", "rarity": "Rare", "icon": "fa-droplet", "type": "enemy", "desc": "Demote an enemy piece to a Pawn.", "color": "#ef4444"},
-    {"id": "fiendfyre", "name": "Fiendfyre", "rarity": "Rare", "icon": "fa-fire", "type": "any", "desc": "Destroy a 3x3 square area.", "color": "#f97316"},
-    {"id": "accio", "name": "Accio", "rarity": "Common", "icon": "fa-magnet", "type": "drag_own", "desc": "Move your piece up to 2 squares.", "color": "#22c55e"},
-    {"id": "leviosa", "name": "Wingardium Leviosa", "rarity": "Common", "icon": "fa-feather", "type": "drag_own", "desc": "Move to an adjacent empty square.", "color": "#06b6d4"},
-    {"id": "alohomora", "name": "Alohomora", "rarity": "Common", "icon": "fa-key", "type": "drag_own", "desc": "Move to any empty square on your half.", "color": "#84cc16"},
-    {"id": "expelliarmus", "name": "Expelliarmus", "rarity": "Common", "icon": "fa-wand-magic-sparkles", "type": "instant", "desc": "Disarm: Opponent loses a random spell.", "color": "#ec4899"},
-    {"id": "protego", "name": "Protego", "rarity": "Common", "icon": "fa-shield-halved", "type": "own_pawn", "desc": "Promote your Pawn to a Knight.", "color": "#3b82f6"},
+    {"id": "time", "name": "Time-Turner", "type": "instant", "desc": "Reverse opponent's last spell or move.", "color": "#eab308", "image": SVG_TIME},
+    {"id": "avada", "name": "Avada Kedavra", "type": "enemy", "desc": "Destroy an enemy piece instantly.", "color": "#22c55e", "image": SVG_AVADA},
+    {"id": "imperio", "name": "Imperio", "type": "drag_enemy", "desc": "Command an enemy piece to move.", "color": "#ec4899", "image": SVG_IMPERIO},
+    {"id": "sectum", "name": "Sectumsempra", "type": "enemy", "desc": "Demote an enemy piece to a Pawn.", "color": "#ef4444", "image": SVG_SECTUM},
+    {"id": "fiendfyre", "name": "Fiendfyre", "type": "any", "desc": "Incinerate a 3x3 square area.", "color": "#f97316", "image": SVG_FIENDFYRE},
+    {"id": "accio", "name": "Accio", "type": "drag_own", "desc": "Summon your piece up to 2 squares.", "color": "#0ea5e9", "image": SVG_ACCIO},
 ]
 
 ROOMS = {}
@@ -31,24 +35,8 @@ def fen_side_to_move(fen: str) -> str:
         return "w"
 
 def fresh_hand():
-    legendary = [s for s in SPELLS if s["rarity"] == "Legendary"]
-    rare = [s for s in SPELLS if s["rarity"] == "Rare"]
-    common = [s for s in SPELLS if s["rarity"] == "Common"]
-
-    hand = []
-    if legendary:
-        hand.append(random.choice(legendary))
-
-    rare_count = min(len(rare), random.randint(1, 2))
-    common_count = min(len(common), random.randint(2, 4))
-
-    if rare_count:
-        hand.extend(random.sample(rare, rare_count))
-    if common_count:
-        hand.extend(random.sample(common, common_count))
-
-    random.shuffle(hand)
-    return hand
+    # Both players get the exact same 6 spells. Each can only be used once.
+    return list(SPELLS)
 
 def get_room(room_id: str):
     if room_id not in ROOMS:
@@ -183,28 +171,18 @@ def handle_spell_effect(data):
 
     log_text = (data.get("log") or spell_id).strip()
 
+    # Special Logic for Time-Turner: Reverts Board State and Turns
     if spell_id == "time":
         if len(room["history"]) < 2:
-            return
-        room["history"].pop()
-        fen = room["history"][-1]
-        room["turn"] = fen_side_to_move(fen)
+            return # Cannot rewind at turn 1
+        room["history"].pop() # Pop the current board state
+        fen = room["history"][-1] # Grabs the previous board state
+        log_text = "TIME-TURNER (Reversed Action)"
     else:
         if not fen:
             return
 
-        if spell_id == "expelliarmus":
-            opp = "b" if color == "w" else "w"
-            if room["hands"].get(opp):
-                available = [s for s in room["hands"][opp] if s["id"] not in room["used"][opp]]
-                if available:
-                    removed = random.choice(available)
-                    room["used"][opp].add(removed["id"])
-                    log_text = f"EXPELLIARMUS (Disarmed {removed['name']})"
-                else:
-                    log_text = "EXPELLIARMUS (Nothing to disarm)"
-
-        # FORCE TURN SWAP for all standard spells so player cannot keep moving
+        # FORCE TURN SWAP for all standard spells to end turn officially
         next_turn = "b" if color == "w" else "w"
         room["turn"] = next_turn
 
@@ -212,7 +190,7 @@ def handle_spell_effect(data):
         if len(parts) > 1:
             parts[1] = next_turn
         if len(parts) > 3:
-            parts[3] = "-"  # Clear en passant target
+            parts[3] = "-"
         if color == "b" and len(parts) > 5:
             try:
                 parts[5] = str(int(parts[5]) + 1)
@@ -222,12 +200,19 @@ def handle_spell_effect(data):
 
     room["used"][color].add(spell_id)
     room["fen"] = fen
+    
+    # If it was a Time-Turner, the turn correctly swaps back to the person who was reversed.
+    if spell_id == "time":
+        room["turn"] = fen_side_to_move(fen)
+        
     room["last_action"] = {
         "type": "spell",
         "color": color,
         "spell_id": spell_id,
         "log": log_text,
     }
+    
+    # Time-Turner action is NOT saved to history, to allow for clean undo states
     if spell_id != "time":
         room["history"].append(fen)
 
@@ -240,14 +225,6 @@ def handle_spell_effect(data):
         "is_spell": True,
         "used_spell_id": spell_id,
         "room_state": room_snapshot(room_id),
-    }, to=room_id)
-
-    # Sync spells just in case Expelliarmus removed a card
-    emit("sync_spells", {
-        "used": {
-            "w": list(room["used"]["w"]),
-            "b": list(room["used"]["b"])
-        }
     }, to=room_id)
 
 @socketio.on("resign")
@@ -279,37 +256,39 @@ HTML_PAYLOAD = r'''
 <html lang="en">
 <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Wizard's Chess</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&family=Cinzel:wght@600;800&display=swap');
 
         :root {
-            --bg: #1a1622;
-            --panel: #262032;
-            --panel-2: #1e1928;
-            --line: #3f354e;
-            --muted: #a79cb7;
+            --bg: #0d0b13;
+            --panel: #1a1523;
+            --panel-2: #16121c;
+            --line: #3c314a;
+            --muted: #8b7d9b;
+            --green: #81b64c;
             --light: #ebecd0;
             --dark: #739552;
         }
 
         * { box-sizing: border-box; }
+        
+        /* Removed overflow hidden to allow native scrolling on all devices */
         body {
             margin: 0;
             font-family: 'Inter', sans-serif;
-            background: var(--bg);
+            background-color: var(--bg);
+            background-image: radial-gradient(circle at 50% 50%, #171221 0%, #0d0b13 100%);
             color: #fff;
-            overscroll-behavior: none;
-            overflow: hidden;
         }
 
-        ::-webkit-scrollbar { width: 6px; height: 6px; }
-        ::-webkit-scrollbar-track { background: var(--panel); }
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: var(--bg); }
         ::-webkit-scrollbar-thumb { background: #4a3b5c; border-radius: 999px; }
 
         .text-muted { color: var(--muted); }
@@ -321,10 +300,10 @@ HTML_PAYLOAD = r'''
             width: 100%;
             aspect-ratio: 1 / 1;
             position: relative;
-            border-radius: 16px;
+            border-radius: 8px;
             overflow: hidden;
             border: 4px solid var(--panel);
-            box-shadow: 0 25px 60px rgba(0, 0, 0, 0.45);
+            box-shadow: 0 25px 60px rgba(0, 0, 0, 0.6);
             transition: transform 0.18s ease;
             background: #000;
         }
@@ -405,39 +384,45 @@ HTML_PAYLOAD = r'''
             pointer-events: none;
         }
 
-        /* Improved Grimoire styling */
+        /* Magical UI Enhancements */
         .grimoire-container {
-            background: linear-gradient(180deg, #231c2c, #16121c);
-            border-left: 1px solid #3c314a;
-            box-shadow: -5px 0 25px rgba(0,0,0,0.4);
+            background-color: var(--panel-2);
+            background-image: radial-gradient(circle at center, rgba(30,25,40,0.8), rgba(15,10,20,1));
+            border-left: 1px solid #4a3b5c;
+            box-shadow: -10px 0 30px rgba(0,0,0,0.8);
+            position: relative;
         }
         
-        .grimoire-header {
-            background: rgba(0, 0, 0, 0.2);
-            border-bottom: 1px solid #3c314a;
+        .grimoire-container::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: url('https://www.transparenttextures.com/patterns/cream-paper.png');
+            opacity: 0.05;
+            pointer-events: none;
         }
 
         .spell-card {
-            background: linear-gradient(145deg, #2b2238, #1c1524);
-            border: 1px solid rgba(255,255,255,0.05);
-            border-radius: 12px;
+            background: linear-gradient(145deg, #241d2e 0%, #15111b 100%);
+            border: 2px solid #3c314a;
             position: relative;
             overflow: hidden;
-            transition: all 0.2s cubic-bezier(0.25, 0.8, 0.25, 1);
-            padding: 0.75rem;
+            transition: all 0.25s cubic-bezier(0.25, 0.8, 0.25, 1);
+            border-radius: 12px;
         }
-        
-        .spell-card::before {
+
+        .spell-card::after {
             content: '';
             position: absolute;
-            top: 0; left: 0; right: 0; height: 3px;
-            background: var(--spell-color);
-            opacity: 0.8;
+            inset: 0;
+            border-radius: 10px;
+            box-shadow: inset 0 0 15px rgba(0,0,0,0.8);
+            pointer-events: none;
         }
 
         .spell-card:hover:not(.used) {
             transform: translateY(-4px) scale(1.02);
-            box-shadow: 0 10px 20px rgba(0,0,0,0.4), 0 0 15px var(--spell-glow);
+            box-shadow: 0 15px 25px -5px rgba(0,0,0,0.6), 0 0 15px var(--spell-glow);
             border-color: var(--spell-color);
             z-index: 10;
         }
@@ -451,15 +436,15 @@ HTML_PAYLOAD = r'''
 
         .spell-card.used {
             opacity: 0.35;
-            filter: grayscale(0.9);
-            cursor: not-allowed;
+            filter: grayscale(1) brightness(0.6);
+            pointer-events: none; /* Physically prevents secondary clicks */
         }
 
         .overlay {
             position: absolute;
             inset: 0;
-            background: rgba(0,0,0,0.68);
-            backdrop-filter: blur(4px);
+            background: rgba(0,0,0,0.75);
+            backdrop-filter: blur(5px);
             display: flex;
             align-items: center;
             justify-content: center;
@@ -467,116 +452,118 @@ HTML_PAYLOAD = r'''
         }
 
         .game-root {
-            height: 100vh;
+            min-height: 100vh;
+            width: 100%;
         }
 
         .shell-left {
-            min-width: 0;
+            min-height: 0;
         }
 
         .board-holder {
             width: 100%;
-            max-width: min(85vh, 100%);
+            max-width: min(100%, 85vh);
             margin: 0 auto;
         }
 
         #move-history {
-            background: #110e16;
+            background: rgba(0,0,0,0.3);
             color: #d1c5e0;
         }
     </style>
 </head>
 <body>
 <div class="game-root flex flex-col lg:flex-row">
-    <div class="flex-1 flex flex-col justify-center p-2 lg:p-4 overflow-hidden shell-left">
+    <div class="flex-1 flex flex-col justify-center p-2 lg:p-4 shell-left">
         <div class="board-holder space-y-2 lg:space-y-3">
             <div class="flex justify-between items-center px-2">
                 <div class="flex items-center gap-3 min-w-0">
-                    <div class="w-10 h-10 bg-[#1f1e1b] rounded flex items-center justify-center overflow-hidden border border-[#3f3e3b] shrink-0">
-                        <img src="https://images.chesscomfiles.com/chess-themes/pieces/neo/150/bp.png" class="w-8 h-8 object-contain" id="opp-avatar">
+                    <div class="w-10 h-10 bg-black rounded flex items-center justify-center overflow-hidden border border-[var(--line)] shrink-0 shadow-lg">
+                        <img src="https://images.chesscomfiles.com/chess-themes/pieces/neo/150/bp.png" class="w-8 h-8 object-contain drop-shadow" id="opp-avatar">
                     </div>
                     <div class="min-w-0">
                         <div class="font-bold text-sm tracking-wide truncate" id="opp-name">Opponent</div>
                         <div class="flex items-center mt-0.5 min-h-[18px] flex-wrap gap-1" id="captured-top"></div>
                     </div>
                 </div>
-                <div class="text-xs font-mono font-bold bg-[#1f1e1b] text-muted px-3 py-2 rounded shrink-0" id="opp-status">Waiting</div>
+                <div class="text-xs font-mono font-bold bg-[var(--panel)] text-[var(--muted)] px-3 py-2 rounded shrink-0 shadow border border-[var(--line)]" id="opp-status">Waiting</div>
             </div>
 
             <div class="board-shell" id="board-shell">
                 <div id="board" class="w-full h-full grid grid-cols-8 grid-rows-8 select-none"></div>
 
                 <div id="waiting-overlay" class="overlay">
-                    <div class="bg-[#262421] border border-[#3f3e3b] p-6 rounded-2xl text-center max-w-[92%] shadow-2xl w-[420px]">
+                    <div class="bg-[var(--panel)] border border-[var(--line)] p-6 rounded-2xl text-center max-w-[92%] shadow-2xl w-[420px]">
                         <h2 class="text-xl font-bold mb-2 text-white">
-                            <i class="fa-solid fa-chess-knight text-[#81b64c] mr-2"></i>Match Lobby
+                            <i class="fa-solid fa-chess-knight text-[var(--green)] mr-2"></i>Match Lobby
                         </h2>
-                        <p class="text-sm text-muted mb-4">Enter your name and send this link to a friend to start the match.</p>
+                        <p class="text-sm text-[var(--muted)] mb-4">Enter your name and send this link to a friend to start.</p>
                         <div class="flex gap-2 mb-3">
                             <input type="text" id="name-input" maxlength="24" placeholder="Your name"
-                                   class="w-full bg-[#141312] border border-[#3f3e3b] text-white p-3 rounded-lg text-sm focus:outline-none">
+                                   class="w-full bg-black border border-[var(--line)] text-white p-3 rounded-lg text-sm focus:outline-none">
                         </div>
                         <div class="flex gap-2">
-                            <input type="text" id="share-link" readonly class="w-full bg-[#141312] border border-[#3f3e3b] text-white p-3 rounded-lg text-xs font-mono focus:outline-none">
-                            <button id="copy-btn" class="bg-[#81b64c] hover:bg-[#a3d160] text-black font-extrabold px-4 rounded-lg text-sm transition">
+                            <input type="text" id="share-link" readonly class="w-full bg-black border border-[var(--line)] text-[var(--muted)] p-3 rounded-lg text-xs font-mono focus:outline-none">
+                            <button id="copy-btn" class="bg-[var(--green)] hover:bg-[#91c95b] text-black font-extrabold px-4 rounded-lg text-sm transition">
                                 <i class="fa-solid fa-copy"></i>
                             </button>
                         </div>
-                        <button id="join-btn" class="mt-3 w-full bg-white text-black font-extrabold px-4 py-3 rounded-lg text-sm transition hover:opacity-90">
+                        <button id="join-btn" class="mt-3 w-full bg-white text-black font-extrabold px-4 py-3 rounded-lg text-sm transition hover:bg-gray-200 shadow-lg">
                             Join Match
                         </button>
                     </div>
                 </div>
 
                 <div id="game-over-overlay" class="overlay hidden">
-                    <div class="bg-[#262421] border border-[#3f3e3b] p-6 rounded-2xl text-center max-w-[92%] shadow-2xl w-[420px]">
+                    <div class="bg-[var(--panel)] border border-[var(--line)] p-6 rounded-2xl text-center max-w-[92%] shadow-2xl w-[420px]">
                         <h2 class="text-xl font-bold mb-2 text-white"><i class="fa-solid fa-flag text-red-400 mr-2"></i>Game Over</h2>
-                        <p id="game-over-text" class="text-sm text-muted mb-4">The game has ended.</p>
-                        <button onclick="window.location.reload()" class="bg-[#81b64c] hover:bg-[#a3d160] text-black font-extrabold px-4 py-3 rounded-lg text-sm transition w-full">Play Again</button>
+                        <p id="game-over-text" class="text-sm text-[var(--muted)] mb-4">The game has ended.</p>
+                        <button onclick="window.location.reload()" class="bg-[var(--green)] hover:bg-[#91c95b] text-black font-extrabold px-4 py-3 rounded-lg text-sm transition w-full shadow-lg">Play Again</button>
                     </div>
                 </div>
 
-                <div id="spell-banner" class="hidden absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-white px-6 py-4 rounded-2xl font-bold text-center z-50 shadow-[0_0_30px_rgba(168,85,247,0.45)] border border-white/20 w-[90%] max-w-[340px]">
-                    <div id="spell-banner-title" class="text-xl mb-1 drop-shadow-md">SPELL</div>
+                <div id="spell-banner" class="hidden absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-white px-6 py-4 rounded-2xl font-bold text-center z-50 shadow-[0_0_40px_rgba(0,0,0,0.8)] border border-white/20 w-[90%] max-w-[340px] backdrop-blur-md">
+                    <div id="spell-banner-title" class="text-2xl mb-1 drop-shadow-md" style="font-family: 'Cinzel', serif;">SPELL</div>
                     <div id="spell-banner-desc" class="text-sm font-medium text-white/90 mb-4">Action</div>
-                    <button onclick="cancelSpell()" class="text-sm bg-black/35 hover:bg-black/55 px-4 py-2 rounded-lg w-full transition uppercase tracking-wider font-bold">Cancel</button>
+                    <button onclick="cancelSpell()" class="text-sm bg-black/50 hover:bg-black/70 px-4 py-2 border border-white/10 rounded-lg w-full transition uppercase tracking-wider font-bold">Cancel</button>
                 </div>
             </div>
 
             <div class="flex justify-between items-center px-2">
                 <div class="flex items-center gap-3 min-w-0">
-                    <div class="w-10 h-10 bg-[#1f1e1b] rounded flex items-center justify-center overflow-hidden border border-[#3f3e3b] shrink-0">
-                        <img src="https://images.chesscomfiles.com/chess-themes/pieces/neo/150/wp.png" class="w-8 h-8 object-contain" id="my-avatar">
+                    <div class="w-10 h-10 bg-black rounded flex items-center justify-center overflow-hidden border border-[var(--line)] shrink-0 shadow-lg">
+                        <img src="https://images.chesscomfiles.com/chess-themes/pieces/neo/150/wp.png" class="w-8 h-8 object-contain drop-shadow" id="my-avatar">
                     </div>
                     <div class="min-w-0">
                         <div class="font-bold text-sm tracking-wide truncate" id="my-name">You</div>
                         <div class="flex items-center mt-0.5 min-h-[18px] flex-wrap gap-1" id="captured-bottom"></div>
                     </div>
                 </div>
-                <div class="text-xs font-mono font-bold bg-[#81b64c] text-black px-3 py-2 rounded shrink-0" id="my-status">Thinking</div>
+                <div class="text-xs font-mono font-bold bg-[var(--green)] text-black px-3 py-2 rounded shrink-0 shadow-lg" id="my-status">Thinking</div>
             </div>
         </div>
     </div>
 
-    <!-- Redesigned Grimoire Panel -->
-    <div class="w-full lg:w-[380px] xl:w-[420px] grimoire-container flex flex-col h-[35vh] lg:h-full z-10 flex-shrink-0">
-        <div class="p-4 grimoire-header flex justify-between items-center">
-            <h3 class="font-bold text-sm text-[#d1c5e0] uppercase tracking-widest flex items-center">
-                <i class="fa-solid fa-book-journal-whills mr-2 text-[#8b5cf6]"></i>Your Grimoire
+    <!-- Redesigned Grimoire Panel for scrolling -->
+    <div class="w-full lg:w-[420px] xl:w-[460px] grimoire-container flex flex-col z-10 lg:h-screen lg:sticky top-0 pb-6 lg:pb-0">
+        <div class="p-5 border-b border-[var(--line)] bg-[rgba(0,0,0,0.4)] backdrop-blur-sm sticky top-0 z-20 flex justify-between items-center shadow-md">
+            <h3 class="font-bold text-sm text-[#e9d5ff] uppercase tracking-widest flex items-center" style="font-family: 'Cinzel', serif;">
+                <i class="fa-solid fa-book-journal-whills mr-2 text-purple-400"></i>The Grimoire
             </h3>
-            <span id="turn-indicator" class="text-[10px] font-bold px-2 py-1 rounded bg-[#1f1e1b] text-muted">WAITING</span>
+            <span id="turn-indicator" class="text-[10px] font-bold px-2 py-1 rounded bg-black text-[var(--muted)] border border-[var(--line)]">WAITING</span>
         </div>
         
-        <div id="spells-container" class="flex lg:grid lg:grid-cols-2 gap-3 overflow-x-auto lg:overflow-y-auto p-4 max-h-[300px]">
+        <div id="spells-container" class="grid grid-cols-2 gap-3 p-4">
+            <!-- Spells injected here via JS -->
         </div>
 
-        <div class="px-4 py-3 border-y border-[#3c314a] flex justify-between items-center bg-[rgba(0,0,0,0.2)]">
-            <span class="font-bold text-xs text-[#a79cb7] uppercase tracking-widest"><i class="fa-solid fa-list-ul mr-2"></i>Match Log</span>
+        <div class="px-5 py-3 mt-auto border-t border-[var(--line)] flex justify-between items-center bg-[rgba(0,0,0,0.4)]">
+            <span class="font-bold text-xs text-[var(--muted)] uppercase tracking-widest"><i class="fa-solid fa-scroll mr-2"></i>History</span>
             <button id="resign-btn" class="text-xs text-red-400 hover:text-red-300 transition font-bold">
                 <i class="fa-solid fa-flag mr-1"></i>Resign
             </button>
         </div>
-        <div class="flex-grow overflow-y-auto p-4 font-mono text-sm shadow-inner" id="move-history"></div>
+        <div class="flex-grow max-h-[250px] lg:max-h-[none] overflow-y-auto p-4 font-mono text-sm shadow-inner" id="move-history"></div>
     </div>
 </div>
 
@@ -672,27 +659,27 @@ function isMyTurn() {
 function setMoveLogFromSan(text, color, isSpell = false) {
     const history = document.getElementById("move-history");
     const safeText = (text || "").toString();
-    const style = isSpell ? "text-[#b490e5] font-bold" : "text-[#d1c5e0]";
-    const icon = isSpell ? '<i class="fa-solid fa-wand-magic-sparkles text-[10px] mr-1"></i>' : "";
+    const style = isSpell ? "text-purple-300 font-bold drop-shadow-md" : "text-[#e3e3e3]";
+    const icon = isSpell ? '<i class="fa-solid fa-bolt text-[10px] mr-1 text-purple-400"></i>' : "";
 
     if (color === "w") {
         history.insertAdjacentHTML("beforeend", `
-            <div class="flex py-1.5 border-b border-[#3c314a]">
-                <div class="w-8 text-[#a79cb7]">${moveNum}.</div>
+            <div class="flex py-1.5 border-b border-[var(--line)]">
+                <div class="w-8 text-[var(--muted)]">${moveNum}.</div>
                 <div class="w-1/2 ${style}">${icon}${safeText}</div>
-                <div class="w-1/2 text-right text-[#a79cb7]" id="black-move-${moveNum}">...</div>
+                <div class="w-1/2 text-right text-[var(--muted)]" id="black-move-${moveNum}">...</div>
             </div>
         `);
     } else {
         const el = document.getElementById(`black-move-${moveNum}`);
         if (el) {
             el.innerHTML = `<span class="${style}">${icon}${safeText}</span>`;
-            el.classList.remove("text-muted", "text-[#a79cb7]");
+            el.classList.remove("text-muted");
             el.classList.add("text-left");
         } else {
             history.insertAdjacentHTML("beforeend", `
-                <div class="flex py-1.5 border-b border-[#3c314a]">
-                    <div class="w-8 text-[#a79cb7]">${moveNum}.</div>
+                <div class="flex py-1.5 border-b border-[var(--line)]">
+                    <div class="w-8 text-[var(--muted)]">${moveNum}.</div>
                     <div class="w-1/2"></div>
                     <div class="w-1/2 ${style}">${icon}${safeText}</div>
                 </div>
@@ -735,8 +722,8 @@ function calcMaterial() {
     const bottomAdv = wScore > bScore ? (myColor === "w" ? wScore - bScore : "") : (bScore > wScore ? (myColor === "b" ? bScore - wScore : "") : "");
     const topAdv = wScore > bScore ? (myColor === "b" ? wScore - bScore : "") : (bScore > wScore ? (myColor === "w" ? bScore - wScore : "") : "");
 
-    document.getElementById("captured-bottom").innerHTML = (myColor === "w" ? capW : capB) + (bottomAdv ? `<span class="text-xs text-muted ml-1 font-bold">+${bottomAdv}</span>` : "");
-    document.getElementById("captured-top").innerHTML = (myColor === "w" ? capB : capW) + (topAdv ? `<span class="text-xs text-muted ml-1 font-bold">+${topAdv}</span>` : "");
+    document.getElementById("captured-bottom").innerHTML = (myColor === "w" ? capW : capB) + (bottomAdv ? `<span class="text-xs text-[var(--muted)] ml-1 font-bold">+${bottomAdv}</span>` : "");
+    document.getElementById("captured-top").innerHTML = (myColor === "w" ? capB : capW) + (topAdv ? `<span class="text-xs text-[var(--muted)] ml-1 font-bold">+${topAdv}</span>` : "");
 }
 
 function updateUI() {
@@ -789,11 +776,13 @@ function updateUI() {
 
     if (gameReady) {
         turnIndicator.innerText = isMy ? "YOUR TURN" : "OPPONENT'S TURN";
-        turnIndicator.className = `text-[10px] font-bold px-2 py-1 rounded shadow ${isMy ? "bg-[#8b5cf6] text-white" : "bg-[#1f1e1b] text-muted"}`;
+        turnIndicator.className = `text-[10px] font-bold px-2 py-1 rounded shadow ${isMy ? "bg-purple-600 text-white border-purple-400" : "bg-black text-[var(--muted)] border-[var(--line)]"}`;
+        
         myStatus.innerText = isMy ? "Thinking" : "Waiting";
-        myStatus.className = `text-xs font-mono font-bold px-3 py-2 rounded shadow ${isMy ? "bg-[#8b5cf6] text-white" : "bg-[#1f1e1b] text-muted"}`;
+        myStatus.className = `text-xs font-mono font-bold px-3 py-2 rounded shadow-lg ${isMy ? "bg-[var(--green)] text-black" : "bg-black text-[var(--muted)] border border-[var(--line)]"}`;
+        
         oppStatus.innerText = !isMy ? "Thinking" : "Waiting";
-        oppStatus.className = `text-xs font-mono font-bold px-3 py-2 rounded shadow ${!isMy ? "bg-[#8b5cf6] text-white" : "bg-[#1f1e1b] text-muted"}`;
+        oppStatus.className = `text-xs font-mono font-bold px-3 py-2 rounded shadow border ${!isMy ? "bg-[var(--green)] text-black border-transparent" : "bg-black text-[var(--muted)] border-[var(--line)]"}`;
     }
 
     const handContainer = document.getElementById("spells-container");
@@ -805,14 +794,16 @@ function updateUI() {
             const isActive = activeSpell && activeSpell.id === spell.id;
 
             const card = document.createElement("div");
-            card.className = `spell-card min-w-[140px] lg:w-auto text-center flex flex-col items-center justify-center ${isUsed ? "used" : ""} ${isActive ? "active" : ""} ${!isUsed && gameReady && game.turn() === myColor ? "cursor-pointer" : ""}`;
+            card.className = `spell-card p-3 lg:p-4 flex flex-col items-center justify-start ${isUsed ? "used" : ""} ${isActive ? "active" : ""} ${!isUsed && gameReady && game.turn() === myColor ? "cursor-pointer" : ""}`;
             card.style.setProperty("--spell-color", spell.color);
-            card.style.setProperty("--spell-glow", spell.color + "66");
+            card.style.setProperty("--spell-glow", spell.color + "55");
 
             card.innerHTML = `
-                <div class="text-2xl mb-1.5 drop-shadow-md" style="color:${spell.color}"><i class="fa-solid ${spell.icon}"></i></div>
-                <div class="text-[11px] font-bold leading-tight mb-1 text-white tracking-wide uppercase">${spell.name}</div>
-                <div class="text-[10px] text-[#a79cb7] leading-snug hidden lg:block">${spell.desc}</div>
+                <div class="w-12 h-12 lg:w-16 lg:h-16 mb-2 lg:mb-3 relative drop-shadow-[0_0_6px_${spell.color}99]">
+                    ${spell.image}
+                </div>
+                <div class="text-[11px] lg:text-[13px] font-black tracking-wider uppercase mb-1 text-white text-center shadow-black drop-shadow-md border-b pb-1 w-full" style="border-color:${spell.color}88; font-family: 'Cinzel', serif;">${spell.name}</div>
+                <div class="text-[9px] lg:text-[10px] text-gray-400 leading-snug text-center px-1 mt-1 font-medium">${spell.desc}</div>
             `;
 
             card.onclick = () => {
@@ -839,10 +830,11 @@ function updateUI() {
                 activeSpell = spell;
                 spellSourceSq = null;
                 const banner = document.getElementById("spell-banner");
-                document.getElementById("spell-banner-title").innerHTML = `<i class="fa-solid ${spell.icon} mr-2"></i>${spell.name}`;
+                document.getElementById("spell-banner-title").innerText = spell.name;
                 document.getElementById("spell-banner-title").style.color = spell.color;
                 document.getElementById("spell-banner-desc").innerText = spell.desc;
-                banner.style.background = `linear-gradient(135deg, ${spell.color}bb, #2d2436 75%)`;
+                banner.style.background = `linear-gradient(135deg, ${spell.color}44, rgba(0,0,0,0.8) 60%)`;
+                banner.style.border = `1px solid ${spell.color}88`;
                 banner.classList.remove("hidden");
                 updateUI();
             };
@@ -882,13 +874,10 @@ function handleSquareClick(sq) {
     if (selectedSquare) {
         const temp = new Chess(game.fen());
         const move = temp.move({ from: selectedSquare, to: sq, promotion: "q" });
-        
         if (move) {
             const san = move.san;
-            const nextFen = temp.fen();
             
-            // --- OPTIMISTIC UI UPDATE --- 
-            // Apply the move immediately to prevent any UI flickering or lag
+            // Optimistic UI updates
             game.move({ from: selectedSquare, to: sq, promotion: "q" });
             if (san.includes("x")) sounds.capture.play().catch(()=>{});
             else sounds.move.play().catch(()=>{});
@@ -900,10 +889,9 @@ function handleSquareClick(sq) {
                 from: move.from,
                 to: move.to,
                 san: san,
-                fen: nextFen
+                fen: temp.fen()
             });
         }
-        
         selectedSquare = null;
         updateUI();
     }
@@ -1094,36 +1082,33 @@ socket.on("room_state", (state) => {
     updateUI();
 });
 
-socket.on("sync_spells", (data) => {
-    if (myColor && data.used[myColor]) {
-        usedSpells = new Set(data.used[myColor]);
-        updateUI();
-    }
-});
-
 socket.on("board_update", (data) => {
     const isMyNormalMove = (data.color === myColor && !data.is_spell);
 
-    // If it's NOT our normal move, parse the update fully
     if (!isMyNormalMove) {
         if (data.fen) game.load(data.fen);
         
-        if (data.is_spell) {
-            sounds.spell.play().catch(() => {});
-        } else {
-            if ((data.san || "").includes("x")) sounds.capture.play().catch(() => {});
-            else sounds.move.play().catch(() => {});
-        }
+        // Log the text
+        if (data.san) setMoveLogFromSan(data.san, data.color, !!data.is_spell);
         
-        if (data.san) {
-            setMoveLogFromSan(data.san, data.color, !!data.is_spell);
-        }
+        // Visually update the UI first
+        updateUI();
+
+        // Let the CSS layout apply before triggering sound
+        requestAnimationFrame(() => {
+            setTimeout(() => {
+                if (data.is_spell) {
+                    sounds.spell.play().catch(() => {});
+                } else {
+                    if ((data.san || "").includes("x")) sounds.capture.play().catch(() => {});
+                    else sounds.move.play().catch(() => {});
+                }
+            }, 50); // slight pause ensures transition begins
+        });
     } else {
-        // If it was our standard move, we already simulated the visuals/sounds optimistically
-        // Just enforce the FEN string check in case of desync
-        if (data.fen && game.fen() !== data.fen) {
-            game.load(data.fen);
-        }
+        // Validation check for optimistic moves
+        if (data.fen && game.fen() !== data.fen) game.load(data.fen);
+        updateUI();
     }
 
     if (data.is_spell && data.color === myColor && data.used_spell_id) {
@@ -1134,8 +1119,6 @@ socket.on("board_update", (data) => {
         document.getElementById("waiting-overlay").style.display = "none";
         gameReady = true;
     }
-
-    updateUI();
 });
 
 socket.on("game_over", (data) => {
