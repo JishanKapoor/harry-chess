@@ -329,7 +329,11 @@ HTML_PAYLOAD = r'''
             background: #000;
         }
 
-        .board-shell.flipped {
+        .board-shell.flipped #board {
+            transform: rotate(180deg);
+        }
+        
+        .board-shell.flipped .piece {
             transform: rotate(180deg);
         }
 
