@@ -33,20 +33,20 @@ SVG_BOMBARDA = '''<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
 
 SVG_PETRIFICUS = '''<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"><rect x="25" y="35" width="50" height="45" rx="8" fill="#0891b2" stroke="#67e8f9" stroke-width="4" filter="drop-shadow(0 0 10px #06b6d4)"/><path d="M35 35 V20 A15 15 0 0 1 65 20 V35" fill="none" stroke="#67e8f9" stroke-width="8" stroke-linecap="round"/><circle cx="50" cy="57" r="7" fill="#cffafe"/><path d="M47 64 L44 76 H56 L53 64" fill="#cffafe"/><path d="M15 50 L5 50 M85 50 L95 50 M50 15 L50 5 M50 85 L50 95 M25 25 L15 15 M75 25 L85 15 M25 75 L15 85 M75 75 L85 85" stroke="#a5f3fc" stroke-width="4" stroke-linecap="round"/></svg>'''
 
-TIME_TURNER = {"id": "time", "name": "Time-Turner", "type": "instant", "desc": "Rewind the board to before opponent's last move. (Pop 1 from history + your turn again)", "color": "#eab308", "image": SVG_TIME}
+TIME_TURNER = {"id": "time", "name": "Time-Turner", "type": "instant", "desc": "Rewind the board to before the last action (opponent's or your own). Works as soon as any move/spell has been made.", "color": "#eab308", "image": SVG_TIME}
 
 SPELLS_POOL = [
-    {"id": "avada", "name": "Avada Kedavra", "type": "enemy", "desc": "Click an enemy piece to destroy it.", "color": "#22c55e", "image": SVG_AVADA},
-    {"id": "imperio", "name": "Imperio", "type": "drag_enemy", "desc": "Move an enemy piece as your own (not King).", "color": "#ec4899", "image": SVG_IMPERIO},
-    {"id": "sectum", "name": "Sectumsempra", "type": "enemy", "desc": "Demote an enemy piece to a Pawn (not King, not rank 1/8).", "color": "#ef4444", "image": SVG_SECTUM},
+    {"id": "avada", "name": "Avada Kedavra", "type": "enemy", "desc": "Click an enemy piece to destroy it (King immune).", "color": "#22c55e", "image": SVG_AVADA},
+    {"id": "imperio", "name": "Imperio", "type": "drag_enemy", "desc": "Move an enemy piece as your own (King immune).", "color": "#ec4899", "image": SVG_IMPERIO},
+    {"id": "sectum", "name": "Sectumsempra", "type": "enemy", "desc": "Demote an enemy piece to a Pawn (King immune, not on rank 1/8).", "color": "#ef4444", "image": SVG_SECTUM},
     {"id": "fiendfyre", "name": "Fiendfyre", "type": "any", "desc": "Destroy a 3x3 square area completely (Kings immune).", "color": "#f97316", "image": SVG_FIENDFYRE},
     {"id": "portkey", "name": "Portkey", "type": "drag_own", "desc": "Teleport your piece to ANY empty square.", "color": "#3b82f6", "image": SVG_PORTKEY},
-    {"id": "expelliarmus", "name": "Expelliarmus", "type": "instant", "desc": "Disarm: Destroy a random spell from opponent.", "color": "#ef4444", "image": SVG_EXPELLIARMUS},
+    {"id": "expelliarmus", "name": "Expelliarmus", "type": "instant", "desc": "Disarm: Destroy a random unused spell from opponent.", "color": "#ef4444", "image": SVG_EXPELLIARMUS},
     {"id": "protego", "name": "Protego", "type": "own_pawn", "desc": "Promote your Pawn to a Knight instantly.", "color": "#60a5fa", "image": SVG_PROTEGO},
-    {"id": "alohomora", "name": "Alohomora", "type": "drag_own", "desc": "Teleport your piece to any empty square on your half.", "color": "#eab308", "image": SVG_ALOHOMORA},
+    {"id": "alohomora", "name": "Alohomora", "type": "drag_own", "desc": "Teleport your piece to any empty square on your half of the board.", "color": "#eab308", "image": SVG_ALOHOMORA},
     {"id": "leviosa", "name": "Leviosa", "type": "drag_own", "desc": "Float your piece to an adjacent empty square.", "color": "#f3f4f6", "image": SVG_LEVIOSA},
-    {"id": "bombarda", "name": "Bombarda", "type": "bombarda", "desc": "Explode a cross-shaped area (+). Kings immune.", "color": "#dc2626", "image": SVG_BOMBARDA},
-    {"id": "petrificus", "name": "Petrificus Totalus", "type": "instant", "desc": "Paralyze opponent: Make 2 consecutive moves!", "color": "#06b6d4", "image": SVG_PETRIFICUS},
+    {"id": "bombarda", "name": "Bombarda", "type": "bombarda", "desc": "Explode a cross-shaped (+) area (Kings immune).", "color": "#dc2626", "image": SVG_BOMBARDA},
+    {"id": "petrificus", "name": "Petrificus Totalus", "type": "instant", "desc": "Paralyze opponent: You get 2 consecutive moves!", "color": "#06b6d4", "image": SVG_PETRIFICUS},
 ]
 
 ROOMS = {}
@@ -59,9 +59,9 @@ def fen_side_to_move(fen: str) -> str:
 
 def get_room(room_id: str):
     if room_id not in ROOMS:
-        shuffled_pool = random.sample(SPELLS_POOL, len(SPELLS_POOL))
-        hand_w = shuffled_pool[0:5] + [TIME_TURNER]
-        hand_b = shuffled_pool[5:10] + [TIME_TURNER]
+        # IMPROVED: Each player gets independent random 5 spells + Time-Turner (more variety, possible overlap)
+        hand_w = random.sample(SPELLS_POOL, 5) + [TIME_TURNER]
+        hand_b = random.sample(SPELLS_POOL, 5) + [TIME_TURNER]
         random.shuffle(hand_w)
         random.shuffle(hand_b)
         ROOMS[room_id] = {
@@ -118,7 +118,12 @@ def handle_join(data):
     color = player_color(room, player_id)
 
     if color is None:
-        if room["player_ids"]["w"] is None:
+        if room["player_ids"]["w"] is None and room["player_ids"]["b"] is None:
+            # FIRST PLAYER → RANDOM SIDE (White or Black)
+            color = random.choice(["w", "b"])
+            room["player_ids"][color] = player_id
+            room["player_names"][color] = player_name
+        elif room["player_ids"]["w"] is None:
             color = "w"
             room["player_ids"]["w"] = player_id
             room["player_names"]["w"] = player_name
@@ -161,7 +166,6 @@ def handle_standard_move(data):
         return
 
     if room.get("extra_turn") == color:
-        # Consume the extra turn (from Petrificus). After this action, switch normally.
         room["extra_turn"] = None
         room["fen"] = fen
         room["turn"] = fen_side_to_move(fen)
@@ -210,20 +214,18 @@ def handle_spell_effect(data):
     if spell_id == "time":
         if len(room["history"]) < 2:
             return
-        # FIX: Pop ONLY once to rewind to BEFORE opponent's last move (not your own too).
-        # Then force turn back to caster so they get to choose a different move from that position.
+        # IMPROVED: Pop once to revert the LAST action (works after your first move/spell too when you get the turn again)
         room["history"].pop()
         fen = room["history"][-1]
         room["turn"] = color
         room["extra_turn"] = None
-        # Update fen string turn + clear ep
         parts = fen.split(" ")
         if len(parts) > 1:
             parts[1] = color
         if len(parts) > 3:
             parts[3] = "-"
         fen = " ".join(parts)
-        log_text = "TIME-TURNER (Reversed opponent's last move)"
+        log_text = "TIME-TURNER (Reversed last action)"
     else:
         if not fen:
             return
@@ -243,7 +245,6 @@ def handle_spell_effect(data):
             next_turn = color
             log_text = "PETRIFICUS TOTALUS (Double Move!)"
         else:
-            # FIX for extra_turn consistency (prevents infinite/paused turns after Petrificus + spell)
             if room.get("extra_turn") == color:
                 next_turn = "b" if color == "w" else "w"
                 room["extra_turn"] = None
@@ -701,7 +702,7 @@ let spellSourceSq = null;
 let moveNum = 1;
 let playerName = localStorage.getItem("wizard_chess_name") || "";
 let pendingJoin = false;
-let historyLen = 1; // Track global history for Time-Turner checks
+let historyLen = 1;
 
 const bgMusic = document.getElementById("bgMusic");
 const musicToggle = document.getElementById("music-toggle");
@@ -883,7 +884,6 @@ function updateUI() {
                 pieceEl.className = "piece";
             }
 
-            // RED KING LOGIC (Checkmate Warning Glow)
             let isKingInCheck = (p && p.type === 'k' && p.color === turnColor && isCheck);
 
             if (sq === selectedSquare || sq === spellSourceSq) {
@@ -932,7 +932,7 @@ function updateUI() {
         oppStatus.className = `text-xs font-mono font-bold px-3 py-2 rounded shadow border ${!isMy ? "bg-[var(--green)] text-white border-transparent" : "bg-[var(--bg)] text-[var(--muted)] border-[var(--line)]"}`;
     }
 
-    // Your spells (right)
+    // Your spells (right side)
     const handContainer = document.getElementById("spells-container");
     handContainer.innerHTML = "";
 
@@ -962,8 +962,8 @@ function updateUI() {
                     return;
                 }
                 
-                // EDGE CASE FIX: Prevent casting Time-Turner if history is too short
-                if (spell.id === "time" && historyLen < 3) {
+                // Time-Turner guard: now works as soon as historyLen >= 2 (after first move/spell)
+                if (spell.id === "time" && historyLen < 2) {
                     const turnInd = document.getElementById("turn-indicator");
                     turnInd.innerText = "NOT ENOUGH HISTORY";
                     turnInd.className = "text-[10px] font-bold px-2 py-1 rounded shadow bg-red-500 text-white animate-pulse";
@@ -994,7 +994,7 @@ function updateUI() {
         });
     }
 
-    // OPPONENT'S GRIMOIRE (LEFT - VIEW ONLY, with descriptions, cannot interact)
+    // OPPONENT'S GRIMOIRE (LEFT - VIEW ONLY)
     const oppContainer = document.getElementById("opp-spells-container");
     if (oppContainer && oppHand && oppHand.length > 0) {
         oppContainer.innerHTML = "";
@@ -1004,7 +1004,7 @@ function updateUI() {
             const card = document.createElement("div");
             card.className = `spell-card p-2 lg:p-3 flex flex-col items-center justify-start ${isUsed ? "used" : ""} opacity-90`;
             card.style.setProperty("--spell-color", spell.color);
-            card.style.setProperty("--spell-glow", spell.color + "33"); // weaker glow for view-only
+            card.style.setProperty("--spell-glow", spell.color + "33");
 
             card.innerHTML = `
                 <div class="w-10 h-10 lg:w-12 lg:h-12 mb-1.5 relative drop-shadow-[0_0_4px_${spell.color}66]">
@@ -1013,7 +1013,6 @@ function updateUI() {
                 <div class="text-[10px] lg:text-[11px] font-black tracking-wider uppercase mb-0.5 text-white text-center border-b pb-0.5 w-full" style="border-color:${spell.color}55; font-family: 'Cinzel', serif;">${spell.name}</div>
                 <div class="text-[8px] lg:text-[9px] text-[var(--muted)] leading-snug text-center px-1 font-medium">${spell.desc}</div>
             `;
-            // No onclick - view only, cannot mess with opponent's spells
             oppContainer.appendChild(card);
         });
     }
@@ -1070,13 +1069,6 @@ function handleSquareClick(sq) {
     }
 }
 
-function switchTurnInFen(fen) {
-    const parts = fen.split(" ");
-    if (parts.length > 1) parts[1] = parts[1] === "w" ? "b" : "w";
-    if (parts.length > 3) parts[3] = "-";
-    return parts.join(" ");
-}
-
 function processSpellClick(sq) {
     const p = game.get(sq);
     const opp = myColor === "w" ? "b" : "w";
@@ -1090,7 +1082,6 @@ function processSpellClick(sq) {
             if (p && p.color === opp && p.type !== "k") {
                 temp.remove(sq);
                 if (activeSpell.id === "sectum") {
-                    // EDGE CASE FIX: Do not drop pawns on ranks 1 or 8 (Crashes FEN)
                     const targetRank = parseInt(sq[1], 10);
                     if (targetRank === 1 || targetRank === 8) {
                         temp.put({ type: "n", color: opp }, sq);
@@ -1100,7 +1091,6 @@ function processSpellClick(sq) {
                 }
                 nextFen = temp.fen();
             }
-            // The King is now completely immune to direct enemy spells (Avada/Sectum)
             break;
 
         case "bombarda":
@@ -1118,7 +1108,6 @@ function processSpellClick(sq) {
                 blastRadius.forEach(targetSq => {
                     if (targetSq.charCodeAt(0) >= 97 && targetSq.charCodeAt(0) <= 104 && parseInt(targetSq[1],10) >= 1 && parseInt(targetSq[1],10) <= 8) {
                         const tp = temp.get(targetSq);
-                        // Make Kings immune to explosive splash damage
                         if (tp && tp.type !== "k") {
                             temp.remove(targetSq);
                             destroyedSomething = true;
@@ -1133,20 +1122,17 @@ function processSpellClick(sq) {
             {
                 const fileIdx = sq.charCodeAt(0);
                 const rankIdx = parseInt(sq[1], 10);
-                let destroyedSomething = false;
                 for (let f = fileIdx - 1; f <= fileIdx + 1; f++) {
                     for (let r = rankIdx - 1; r <= rankIdx + 1; r++) {
                         if (f < 97 || f > 104 || r < 1 || r > 8) continue;
                         const targetSq = String.fromCharCode(f) + r;
                         const targetPiece = temp.get(targetSq);
-                        // Make Kings immune to Fiendfyre area-of-effect
                         if (targetPiece && targetPiece.type !== "k") {
                             temp.remove(targetSq);
-                            destroyedSomething = true;
                         }
                     }
                 }
-                nextFen = temp.fen(); // Always apply (even if nothing hit) so spell is used
+                nextFen = temp.fen();
             }
             break;
 
@@ -1179,15 +1165,12 @@ function processSpellClick(sq) {
                     if (!ownHalf || p) return;
                 }
 
-                // EDGE CASE FIX: Imperio FEN rules & validation
                 if (activeSpell.id === "imperio") {
-                    // Bypass strict chess.js move validation to prevent King safety blocks.
-                    // We treat it as a free teleport for an enemy piece.
                     const sourcePiece = temp.get(source);
                     if (sourcePiece && sourcePiece.type === 'k') {
                          spellSourceSq = null;
                          updateUI();
-                         return; // Cannot Imperio the King
+                         return;
                     }
                     temp.remove(source);
                     if (sourcePiece) temp.put(sourcePiece, sq);
@@ -1205,20 +1188,19 @@ function processSpellClick(sq) {
     }
 
     if (nextFen) {
-        // EDGE CASE FIX: Verify spell doesn't leave your OWN King in Check (unless it obliterates the enemy king entirely)
         if (activeSpell.id !== "time") {
             const fenKings = nextFen.split(" ")[0];
             if (fenKings.includes("K") && fenKings.includes("k")) {
                 const checkTemp = new Chess();
                 let fParts = nextFen.split(" ");
-                fParts[1] = myColor; // Evaluate check rule for the caster
+                fParts[1] = myColor;
                 const validLoad = checkTemp.load(fParts.join(" "));
                 if (validLoad && checkTemp.in_check()) {
                     const turnInd = document.getElementById("turn-indicator");
                     turnInd.innerText = "MUST ESCAPE CHECK!";
                     turnInd.className = "text-[10px] font-bold px-2 py-1 rounded shadow bg-red-500 text-white animate-pulse";
                     setTimeout(cancelSpell, 1500);
-                    return; // Abort emitting the spell
+                    return;
                 }
             }
         }
@@ -1395,7 +1377,6 @@ socket.on("board_update", (data) => {
         gameReady = true;
     }
 
-    // Standard Checkmate evaluation by the mover
     if (data.color === myColor && !data.room_state.game_over) {
         if (game.in_checkmate()) {
             const winner = game.turn() === 'w' ? 'b' : 'w';
