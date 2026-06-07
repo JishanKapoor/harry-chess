@@ -56,7 +56,7 @@ def get_room(room_id: str):
         ROOMS[room_id] = {
             "fen": START_FEN,
             "turn": "w",
-            "extra_turn": None, # Tracks if someone has a double move
+            "extra_turn": None,
             "history": [START_FEN],
             "player_ids": {"w": None, "b": None},
             "player_names": {"w": "White", "b": "Black"},
@@ -143,18 +143,17 @@ def handle_standard_move(data):
     if color is None or room["turn"] != color or not fen:
         return
 
-    # Handle Extra Turn logic for "Double Move" spell
     if room.get("extra_turn") == color:
         parts = fen.split(" ")
         if len(parts) > 1:
-            parts[1] = color # Force FEN turn back to the caster
+            parts[1] = color
         if len(parts) > 3:
             parts[3] = "-"
         fen = " ".join(parts)
         
         room["fen"] = fen
         room["turn"] = color
-        room["extra_turn"] = None # Consume the extra turn
+        room["extra_turn"] = None
     else:
         room["fen"] = fen
         room["turn"] = fen_side_to_move(fen)
@@ -198,11 +197,14 @@ def handle_spell_effect(data):
     log_text = (data.get("log") or spell_id).strip()
 
     if spell_id == "time":
-        if len(room["history"]) < 2:
+        if len(room["history"]) < 3:
             return
+        # Pop twice to revert back to the start of caster's previous turn
+        room["history"].pop()
         room["history"].pop()
         fen = room["history"][-1]
         room["turn"] = fen_side_to_move(fen)
+        room["extra_turn"] = None
         log_text = "TIME-TURNER (Reversed Action)"
     else:
         if not fen:
@@ -218,7 +220,6 @@ def handle_spell_effect(data):
             else:
                 log_text = "EXPELLIARMUS (Nothing to disarm)"
 
-        # Turn resolution based on double move spell
         if spell_id == "petrificus":
             room["extra_turn"] = color
             next_turn = color
@@ -243,7 +244,6 @@ def handle_spell_effect(data):
                 pass
         fen = " ".join(parts)
 
-    # Check for King Death via Spells
     board_part = fen.split(" ")[0]
     w_king_alive = "K" in board_part
     b_king_alive = "k" in board_part
@@ -668,6 +668,7 @@ let spellSourceSq = null;
 let moveNum = 1;
 let playerName = localStorage.getItem("wizard_chess_name") || "";
 let pendingJoin = false;
+let historyLen = 1; // Track global history for Time-Turner checks
 
 const bgMusic = document.getElementById("bgMusic");
 const musicToggle = document.getElementById("music-toggle");
@@ -926,6 +927,15 @@ function updateUI() {
                     cancelSpell();
                     return;
                 }
+                
+                // EDGE CASE FIX: Prevent casting Time-Turner if history is too short
+                if (spell.id === "time" && historyLen < 3) {
+                    const turnInd = document.getElementById("turn-indicator");
+                    turnInd.innerText = "NOT ENOUGH HISTORY";
+                    turnInd.className = "text-[10px] font-bold px-2 py-1 rounded shadow bg-red-500 text-white animate-pulse";
+                    setTimeout(cancelSpell, 1500);
+                    return;
+                }
 
                 if (spell.type === "instant") {
                     usedSpells.add(spell.id);
@@ -1022,11 +1032,17 @@ function processSpellClick(sq) {
             if (p && p.color === opp && p.type !== "k") {
                 temp.remove(sq);
                 if (activeSpell.id === "sectum") {
-                    temp.put({ type: "p", color: opp }, sq);
+                    // EDGE CASE FIX: Do not drop pawns on ranks 1 or 8 (Crashes FEN)
+                    const targetRank = parseInt(sq[1], 10);
+                    if (targetRank === 1 || targetRank === 8) {
+                        temp.put({ type: "n", color: opp }, sq);
+                    } else {
+                        temp.put({ type: "p", color: opp }, sq);
+                    }
                 }
                 nextFen = temp.fen();
             } else if (p && p.color === opp && p.type === "k") {
-                // If aiming at king, allow the kill (handled by backend)
+                // Aiming directly at king (handled by backend)
                 temp.remove(sq);
                 nextFen = temp.fen();
             }
@@ -1102,17 +1118,20 @@ function processSpellClick(sq) {
                     if (!ownHalf || p) return;
                 }
 
+                // EDGE CASE FIX: Imperio FEN rules & validation
                 if (activeSpell.id === "imperio") {
-                    temp.load(switchTurnInFen(baseFen));
-                    const moved = temp.move({ from: source, to: sq, promotion: "q" });
-                    if (moved) {
-                        nextFen = temp.fen();
-                        logText = `IMPERIO: ${moved.san}`;
-                    } else {
-                        spellSourceSq = null;
-                        updateUI();
-                        return;
+                    // Bypass strict chess.js move validation to prevent King safety blocks.
+                    // We treat it as a free teleport for an enemy piece.
+                    const sourcePiece = temp.get(source);
+                    if (sourcePiece && sourcePiece.type === 'k') {
+                         spellSourceSq = null;
+                         updateUI();
+                         return; // Cannot Imperio the King
                     }
+                    temp.remove(source);
+                    if (sourcePiece) temp.put(sourcePiece, sq);
+                    nextFen = temp.fen();
+                    logText = `IMPERIO: Relocated enemy piece`;
                     break;
                 }
 
@@ -1125,6 +1144,24 @@ function processSpellClick(sq) {
     }
 
     if (nextFen) {
+        // EDGE CASE FIX: Verify spell doesn't leave your OWN King in Check (unless it obliterates the enemy king entirely)
+        if (activeSpell.id !== "time") {
+            const fenKings = nextFen.split(" ")[0];
+            if (fenKings.includes("K") && fenKings.includes("k")) {
+                const checkTemp = new Chess();
+                let fParts = nextFen.split(" ");
+                fParts[1] = myColor; // Evaluate check rule for the caster
+                const validLoad = checkTemp.load(fParts.join(" "));
+                if (validLoad && checkTemp.in_check()) {
+                    const turnInd = document.getElementById("turn-indicator");
+                    turnInd.innerText = "MUST ESCAPE CHECK!";
+                    turnInd.className = "text-[10px] font-bold px-2 py-1 rounded shadow bg-red-500 text-white animate-pulse";
+                    setTimeout(cancelSpell, 1500);
+                    return; // Abort emitting the spell
+                }
+            }
+        }
+    
         usedSpells.add(activeSpell.id);
         socket.emit("spell_effect", {
             room,
@@ -1216,8 +1253,11 @@ socket.on("role_assigned", (data) => {
         document.getElementById("my-name").innerText = "Spectator";
     }
 
-    if (data.snapshot && data.snapshot.fen) {
-        try { game.load(data.snapshot.fen); } catch(e){}
+    if (data.snapshot) {
+        historyLen = data.snapshot.history_len;
+        if (data.snapshot.fen) {
+            try { game.load(data.snapshot.fen); } catch(e){}
+        }
     }
 
     setBoardOrientation();
@@ -1230,6 +1270,7 @@ socket.on("role_assigned", (data) => {
 });
 
 socket.on("room_state", (state) => {
+    if (state) historyLen = state.history_len;
     const waiting = document.getElementById("waiting-overlay");
     if (state.started && !state.game_over) {
         waiting.style.display = "none";
@@ -1249,6 +1290,7 @@ socket.on("sync_spells", (data) => {
 });
 
 socket.on("board_update", (data) => {
+    if (data.room_state) historyLen = data.room_state.history_len;
     const isMyNormalMove = (data.color === myColor && !data.is_spell);
 
     if (!isMyNormalMove) {
