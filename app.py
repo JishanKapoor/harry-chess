@@ -76,6 +76,7 @@ def room_snapshot(room_id: str):
         "room": room_id,
         "fen": room["fen"],
         "turn": room["turn"],
+        "extra_turn": room["extra_turn"],
         "started": room["player_ids"]["w"] is not None and room["player_ids"]["b"] is not None,
         "game_over": room["game_over"],
         "winner": room["winner"],
@@ -120,10 +121,13 @@ def handle_join(data):
 
     join_room(room_id)
 
+    opp_color = "b" if color == "w" else "w"
     emit("role_assigned", {
         "color": color,
         "hand": room["hands"].get(color, []) if color in ("w", "b") else [],
         "used": list(room["used"].get(color, set())) if color in ("w", "b") else [],
+        "opp_hand": room["hands"].get(opp_color, []) if color in ("w", "b") else [],
+        "opp_used": list(room["used"].get(opp_color, set())) if color in ("w", "b") else [],
         "snapshot": room_snapshot(room_id),
     }, to=request.sid)
 
@@ -485,7 +489,7 @@ HTML_PAYLOAD = r'''
             border-radius: 12px;
         }
 
-        .spell-card:hover:not(.used) {
+        .spell-card:hover:not(.used, .cursor-not-allowed) {
             transform: translateY(-4px) scale(1.02);
             box-shadow: 0 15px 25px -5px rgba(0,0,0,0.6), 0 0 15px var(--spell-glow);
             border-color: var(--spell-color);
@@ -534,7 +538,7 @@ HTML_PAYLOAD = r'''
 
         .music-btn {
             position: fixed;
-            right: 16px;
+            left: 16px; /* Moved to left to avoid blocking right side (Resign) */
             bottom: 16px;
             z-index: 9999;
             border: 1px solid rgba(212,175,55,0.55);
@@ -557,8 +561,22 @@ HTML_PAYLOAD = r'''
 <button id="music-toggle" class="music-btn">♫ Music Off</button>
 
 <div class="game-root flex flex-col lg:flex-row">
+
+    <!-- Opponent's Spells Sidebar (Left) -->
+    <div class="w-full lg:w-[320px] xl:w-[340px] flex flex-col z-10 lg:h-screen bg-[var(--bg)] border-b lg:border-b-0 lg:border-r border-[var(--line)]">
+        <div class="p-3 lg:p-5 border-b border-[var(--line)] bg-[var(--panel)] sticky top-0 z-20 shadow-md">
+            <h3 class="font-bold text-xs lg:text-sm text-[var(--muted)] uppercase tracking-widest flex items-center">
+                <i class="fa-solid fa-eye mr-2"></i>Opponent's Spells
+            </h3>
+        </div>
+        <div id="opp-spells-container" class="flex lg:grid lg:grid-cols-2 gap-2 lg:gap-3 p-3 lg:p-4 overflow-x-auto lg:overflow-y-auto">
+            <!-- Opponent's spells rendered here -->
+        </div>
+    </div>
+
+    <!-- Center Board Area -->
     <div class="flex-1 flex flex-col justify-center p-2 lg:p-4">
-        <div class="board-holder space-y-2 lg:space-y-3">
+        <div class="board-holder space-y-2 lg:space-y-3 relative">
             <div class="flex justify-between items-center px-2">
                 <div class="flex items-center gap-3 min-w-0">
                     <div class="w-10 h-10 bg-black rounded flex items-center justify-center overflow-hidden border border-[var(--line)] shrink-0 shadow-lg">
@@ -617,10 +635,11 @@ HTML_PAYLOAD = r'''
         </div>
     </div>
 
+    <!-- Your Grimoire Sidebar (Right) -->
     <div class="w-full lg:w-[420px] xl:w-[460px] grimoire-container flex flex-col z-10 lg:h-screen lg:overflow-y-auto lg:sticky top-0 pb-6 lg:pb-0">
         <div class="p-5 border-b border-[var(--line)] bg-[var(--panel)] sticky top-0 z-20 flex justify-between items-center shadow-md">
             <h3 class="font-bold text-sm text-white uppercase tracking-widest flex items-center" style="font-family: 'Cinzel', serif;">
-                <i class="fa-solid fa-book-journal-whills mr-2 text-[var(--green)]"></i>The Grimoire
+                <i class="fa-solid fa-book-journal-whills mr-2 text-[var(--green)]"></i>Your Grimoire
             </h3>
             <div id="turn-indicator" class="text-[10px] font-bold px-2 py-1 rounded bg-[var(--bg)] text-[var(--muted)] border border-[var(--line)]">WAITING</div>
         </div>
@@ -629,7 +648,7 @@ HTML_PAYLOAD = r'''
 
         <div class="px-5 py-3 mt-auto border-t border-[var(--line)] flex justify-between items-center bg-[var(--panel)]">
             <span class="font-bold text-xs text-[var(--muted)] uppercase tracking-widest"><i class="fa-solid fa-list-ul mr-2"></i>Match Log</span>
-            <button id="resign-btn" class="text-xs text-red-400 hover:text-red-300 transition font-bold">
+            <button id="resign-btn" class="text-xs text-red-400 hover:text-red-300 transition font-bold relative z-50">
                 <i class="fa-solid fa-flag mr-1"></i>Resign
             </button>
         </div>
@@ -659,7 +678,9 @@ const room = (() => {
 
 let myColor = null;
 let myHand = [];
+let oppHand = [];
 let usedSpells = new Set();
+let oppUsedSpells = new Set();
 let gameReady = false;
 let selectedSquare = null;
 let activeSpell = null;
@@ -667,7 +688,8 @@ let spellSourceSq = null;
 let moveNum = 1;
 let playerName = localStorage.getItem("wizard_chess_name") || "";
 let pendingJoin = false;
-let historyLen = 1; // Track global history for Time-Turner checks
+let historyLen = 1; 
+let extraTurn = null; // Tracks if Petrificus is giving someone a double turn
 
 const bgMusic = document.getElementById("bgMusic");
 const musicToggle = document.getElementById("music-toggle");
@@ -713,10 +735,7 @@ function toggleMusic() {
 musicToggle.addEventListener("click", toggleMusic);
 setMusicButton();
 
-// -------------------------------------------------------------
-// FIX: Clean FEN String (Ensures pieces destroyed by spells don't 
-// create invalid castling/en-passant FENs causing UI failure)
-// -------------------------------------------------------------
+// Fix: Clean FEN String 
 function cleanFen(fen, chessObj) {
     let parts = fen.split(" ");
     let castling = parts[2];
@@ -732,7 +751,6 @@ function cleanFen(fen, chessObj) {
 
         parts[2] = newCastling || "-";
     }
-    // Always clear en passant marker to avoid validation failure when a target pawn was destroyed
     parts[3] = "-"; 
     return parts.join(" ");
 }
@@ -873,7 +891,6 @@ function updateUI() {
                 pieceEl.className = "piece";
             }
 
-            // RED KING LOGIC (Checkmate Warning Glow)
             let isKingInCheck = (p && p.type === 'k' && p.color === turnColor && isCheck);
 
             if (sq === selectedSquare || sq === spellSourceSq) {
@@ -951,7 +968,6 @@ function updateUI() {
                     return;
                 }
                 
-                // EDGE CASE FIX: History length requirement is >= 2 (Allows use after 1 move)
                 if (spell.id === "time" && historyLen < 2) {
                     const turnInd = document.getElementById("turn-indicator");
                     turnInd.innerText = "NOT ENOUGH HISTORY";
@@ -980,6 +996,26 @@ function updateUI() {
             };
 
             handContainer.appendChild(card);
+        });
+    }
+
+    // Render opponent's spells (Unclickable, visual only)
+    const oppContainer = document.getElementById("opp-spells-container");
+    oppContainer.innerHTML = "";
+    if (oppHand && myColor && myColor !== "s") {
+        oppHand.forEach(spell => {
+            const isUsed = oppUsedSpells.has(spell.id);
+            const card = document.createElement("div");
+            card.className = `spell-card p-2 lg:p-3 flex-shrink-0 w-[110px] lg:w-auto flex flex-col items-center justify-start ${isUsed ? "used" : ""} cursor-not-allowed opacity-80`;
+            card.style.setProperty("--spell-color", spell.color);
+            
+            card.innerHTML = `
+                <div class="w-8 h-8 lg:w-12 lg:h-12 mb-1 lg:mb-2 relative">
+                    ${spell.image}
+                </div>
+                <div class="text-[9px] lg:text-[11px] font-black tracking-wider uppercase text-white text-center shadow-black drop-shadow-md w-full" style="font-family: 'Cinzel', serif;">${spell.name}</div>
+            `;
+            oppContainer.appendChild(card);
         });
     }
 
@@ -1015,6 +1051,18 @@ function handleSquareClick(sq) {
         const move = temp.move({ from: selectedSquare, to: sq, promotion: "q" });
         if (move) {
             const san = move.san;
+
+            // BUG FIX: Prevent chess.js engine freeze when making an extra move during Petrificus Totalus
+            // that puts the opponent in Check. (chess.js refuses to process FENs where inactive player is in check).
+            if (extraTurn === myColor && (san.includes("+") || san.includes("#"))) {
+                socket.emit("claim_win", {
+                    room, player_id: playerId, winner: myColor,
+                    reason: "Petrificus Totalus Execution! The opponent was checked while magically paralyzed!"
+                });
+                selectedSquare = null;
+                updateUI();
+                return; // Do not emit standard move to avoid freezing engine
+            }
 
             game.move({ from: selectedSquare, to: sq, promotion: "q" });
             if (san.includes("x")) sounds.capture.play().catch(()=>{});
@@ -1055,7 +1103,6 @@ function processSpellClick(sq) {
             if (p && p.color === opp && p.type !== "k") {
                 temp.remove(sq);
                 if (activeSpell.id === "sectum") {
-                    // EDGE CASE FIX: Do not drop pawns on ranks 1 or 8 (Crashes FEN)
                     const targetRank = parseInt(sq[1], 10);
                     if (targetRank === 1 || targetRank === 8) {
                         temp.put({ type: "n", color: opp }, sq);
@@ -1065,7 +1112,6 @@ function processSpellClick(sq) {
                 }
                 nextFen = temp.fen();
             }
-            // The King is now completely immune to direct enemy spells (Avada/Sectum)
             break;
 
         case "bombarda":
@@ -1083,7 +1129,6 @@ function processSpellClick(sq) {
                 blastRadius.forEach(targetSq => {
                     if (targetSq.charCodeAt(0) >= 97 && targetSq.charCodeAt(0) <= 104 && parseInt(targetSq[1],10) >= 1 && parseInt(targetSq[1],10) <= 8) {
                         const tp = temp.get(targetSq);
-                        // Make Kings immune to explosive splash damage
                         if (tp && tp.type !== "k") {
                             temp.remove(targetSq);
                             destroyedSomething = true;
@@ -1103,7 +1148,6 @@ function processSpellClick(sq) {
                         if (f < 97 || f > 104 || r < 1 || r > 8) continue;
                         const targetSq = String.fromCharCode(f) + r;
                         const targetPiece = temp.get(targetSq);
-                        // Make Kings immune to Fiendfyre area-of-effect
                         if (targetPiece && targetPiece.type !== "k") temp.remove(targetSq);
                     }
                 }
@@ -1140,15 +1184,12 @@ function processSpellClick(sq) {
                     if (!ownHalf || p) return;
                 }
 
-                // EDGE CASE FIX: Imperio FEN rules & validation
                 if (activeSpell.id === "imperio") {
-                    // Bypass strict chess.js move validation to prevent King safety blocks.
-                    // We treat it as a free teleport for an enemy piece.
                     const sourcePiece = temp.get(source);
                     if (sourcePiece && sourcePiece.type === 'k') {
                          spellSourceSq = null;
                          updateUI();
-                         return; // Cannot Imperio the King
+                         return; 
                     }
                     temp.remove(source);
                     if (sourcePiece) temp.put(sourcePiece, sq);
@@ -1166,10 +1207,9 @@ function processSpellClick(sq) {
     }
 
     if (nextFen) {
-        // FIXED BUG: Removing pieces causes structural mismatch in FEN string if castling/en-passant pointers remain.
         nextFen = cleanFen(nextFen, temp); 
         
-        // EDGE CASE FIX: Verify spell doesn't leave your OWN King in Check (unless it obliterates the enemy king entirely)
+        // BUG FIX: Catch cases where a spell unexpectedly causes a broken FEN state (e.g. putting an inactive player in check)
         if (activeSpell.id !== "time") {
             const fenKings = nextFen.split(" ")[0];
             if (fenKings.includes("K") && fenKings.includes("k")) {
@@ -1177,12 +1217,12 @@ function processSpellClick(sq) {
                 let fParts = nextFen.split(" ");
                 fParts[1] = myColor; // Evaluate check rule for the caster
                 const validLoad = checkTemp.load(fParts.join(" "));
-                if (validLoad && checkTemp.in_check()) {
+                if (!validLoad || checkTemp.in_check()) {
                     const turnInd = document.getElementById("turn-indicator");
-                    turnInd.innerText = "MUST ESCAPE CHECK!";
+                    turnInd.innerText = !validLoad ? "MAGIC FIZZLED (INVALID STATE)" : "MUST ESCAPE CHECK!";
                     turnInd.className = "text-[10px] font-bold px-2 py-1 rounded shadow bg-red-500 text-white animate-pulse";
                     setTimeout(cancelSpell, 1500);
-                    return; // Abort emitting the spell
+                    return; // Abort emitting the spell if it ruins the engine's strict validation
                 }
             }
         }
@@ -1262,7 +1302,9 @@ socket.on("connect", () => {
 socket.on("role_assigned", (data) => {
     myColor = data.color;
     myHand = data.hand || [];
+    oppHand = data.opp_hand || [];
     usedSpells = new Set(data.used || []);
+    oppUsedSpells = new Set(data.opp_used || []);
 
     if (myColor === "w") {
         document.getElementById("my-name").innerText = "You (White)";
@@ -1280,6 +1322,7 @@ socket.on("role_assigned", (data) => {
 
     if (data.snapshot) {
         historyLen = data.snapshot.history_len;
+        extraTurn = data.snapshot.extra_turn;
         if (data.snapshot.fen) {
             try { game.load(data.snapshot.fen); } catch(e){}
         }
@@ -1295,7 +1338,10 @@ socket.on("role_assigned", (data) => {
 });
 
 socket.on("room_state", (state) => {
-    if (state) historyLen = state.history_len;
+    if (state) {
+        historyLen = state.history_len;
+        extraTurn = state.extra_turn;
+    }
     const waiting = document.getElementById("waiting-overlay");
     if (state.started && !state.game_over) {
         waiting.style.display = "none";
@@ -1310,12 +1356,19 @@ socket.on("room_state", (state) => {
 socket.on("sync_spells", (data) => {
     if (myColor && data.used[myColor]) {
         usedSpells = new Set(data.used[myColor]);
-        updateUI();
     }
+    const oppC = myColor === "w" ? "b" : "w";
+    if (myColor && data.used[oppC]) {
+        oppUsedSpells = new Set(data.used[oppC]);
+    }
+    updateUI();
 });
 
 socket.on("board_update", (data) => {
-    if (data.room_state) historyLen = data.room_state.history_len;
+    if (data.room_state) {
+        historyLen = data.room_state.history_len;
+        extraTurn = data.room_state.extra_turn;
+    }
     const isMyNormalMove = (data.color === myColor && !data.is_spell);
 
     if (!isMyNormalMove) {
@@ -1351,7 +1404,6 @@ socket.on("board_update", (data) => {
         gameReady = true;
     }
 
-    // Standard Checkmate evaluation by the mover
     if (data.color === myColor && !data.room_state.game_over) {
         if (game.in_checkmate()) {
             const winner = game.turn() === 'w' ? 'b' : 'w';
