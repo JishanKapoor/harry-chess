@@ -1041,11 +1041,8 @@ function processSpellClick(sq) {
                     }
                 }
                 nextFen = temp.fen();
-            } else if (p && p.color === opp && p.type === "k") {
-                // Aiming directly at king (handled by backend)
-                temp.remove(sq);
-                nextFen = temp.fen();
             }
+            // The King is now completely immune to direct enemy spells (Avada/Sectum)
             break;
 
         case "bombarda":
@@ -1063,7 +1060,8 @@ function processSpellClick(sq) {
                 blastRadius.forEach(targetSq => {
                     if (targetSq.charCodeAt(0) >= 97 && targetSq.charCodeAt(0) <= 104 && parseInt(targetSq[1],10) >= 1 && parseInt(targetSq[1],10) <= 8) {
                         const tp = temp.get(targetSq);
-                        if (tp) {
+                        // Make Kings immune to explosive splash damage
+                        if (tp && tp.type !== "k") {
                             temp.remove(targetSq);
                             destroyedSomething = true;
                         }
@@ -1082,7 +1080,8 @@ function processSpellClick(sq) {
                         if (f < 97 || f > 104 || r < 1 || r > 8) continue;
                         const targetSq = String.fromCharCode(f) + r;
                         const targetPiece = temp.get(targetSq);
-                        if (targetPiece) temp.remove(targetSq);
+                        // Make Kings immune to Fiendfyre area-of-effect
+                        if (targetPiece && targetPiece.type !== "k") temp.remove(targetSq);
                     }
                 }
                 nextFen = temp.fen();
