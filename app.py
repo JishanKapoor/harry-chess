@@ -18,7 +18,7 @@ SPELLS = [
     {"id": "accio", "name": "Accio", "rarity": "Common", "icon": "fa-magnet", "type": "drag_own", "desc": "Move your piece up to 2 squares.", "color": "#22c55e"},
     {"id": "leviosa", "name": "Wingardium Leviosa", "rarity": "Common", "icon": "fa-feather", "type": "drag_own", "desc": "Move to an adjacent empty square.", "color": "#06b6d4"},
     {"id": "alohomora", "name": "Alohomora", "rarity": "Common", "icon": "fa-key", "type": "drag_own", "desc": "Move to any empty square on your half.", "color": "#84cc16"},
-    {"id": "expelliarmus", "name": "Expelliarmus", "rarity": "Common", "icon": "fa-wand-magic-sparkles", "type": "instant", "desc": "Keep your turn and move again.", "color": "#ec4899"},
+    {"id": "expelliarmus", "name": "Expelliarmus", "rarity": "Common", "icon": "fa-wand-magic-sparkles", "type": "instant", "desc": "Disarm: Opponent loses a random spell.", "color": "#ec4899"},
     {"id": "protego", "name": "Protego", "rarity": "Common", "icon": "fa-shield-halved", "type": "own_pawn", "desc": "Promote your Pawn to a Knight.", "color": "#3b82f6"},
 ]
 
@@ -181,7 +181,6 @@ def handle_spell_effect(data):
     if spell_id in room["used"][color]:
         return
 
-    consume_turn = bool(data.get("consume_turn", True))
     log_text = (data.get("log") or spell_id).strip()
 
     if spell_id == "time":
@@ -189,18 +188,40 @@ def handle_spell_effect(data):
             return
         room["history"].pop()
         fen = room["history"][-1]
-        consume_turn = True
+        room["turn"] = fen_side_to_move(fen)
+    else:
+        if not fen:
+            return
 
-    if spell_id == "expelliarmus":
-        consume_turn = False
+        if spell_id == "expelliarmus":
+            opp = "b" if color == "w" else "w"
+            if room["hands"].get(opp):
+                available = [s for s in room["hands"][opp] if s["id"] not in room["used"][opp]]
+                if available:
+                    removed = random.choice(available)
+                    room["used"][opp].add(removed["id"])
+                    log_text = f"EXPELLIARMUS (Disarmed {removed['name']})"
+                else:
+                    log_text = "EXPELLIARMUS (Nothing to disarm)"
 
-    if not fen:
-        return
+        # FORCE TURN SWAP for all standard spells so player cannot keep moving
+        next_turn = "b" if color == "w" else "w"
+        room["turn"] = next_turn
+
+        parts = fen.split(" ")
+        if len(parts) > 1:
+            parts[1] = next_turn
+        if len(parts) > 3:
+            parts[3] = "-"  # Clear en passant target
+        if color == "b" and len(parts) > 5:
+            try:
+                parts[5] = str(int(parts[5]) + 1)
+            except:
+                pass
+        fen = " ".join(parts)
 
     room["used"][color].add(spell_id)
     room["fen"] = fen
-    if consume_turn:
-        room["turn"] = fen_side_to_move(fen)
     room["last_action"] = {
         "type": "spell",
         "color": color,
@@ -219,6 +240,14 @@ def handle_spell_effect(data):
         "is_spell": True,
         "used_spell_id": spell_id,
         "room_state": room_snapshot(room_id),
+    }, to=room_id)
+
+    # Sync spells just in case Expelliarmus removed a card
+    emit("sync_spells", {
+        "used": {
+            "w": list(room["used"]["w"]),
+            "b": list(room["used"]["b"])
+        }
     }, to=room_id)
 
 @socketio.on("resign")
@@ -260,12 +289,11 @@ HTML_PAYLOAD = r'''
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap');
 
         :root {
-            --bg: #302e2b;
-            --panel: #262421;
-            --panel-2: #1f1e1b;
-            --line: #3f3e3b;
-            --muted: #a7a6a2;
-            --green: #81b64c;
+            --bg: #1a1622;
+            --panel: #262032;
+            --panel-2: #1e1928;
+            --line: #3f354e;
+            --muted: #a79cb7;
             --light: #ebecd0;
             --dark: #739552;
         }
@@ -282,7 +310,7 @@ HTML_PAYLOAD = r'''
 
         ::-webkit-scrollbar { width: 6px; height: 6px; }
         ::-webkit-scrollbar-track { background: var(--panel); }
-        ::-webkit-scrollbar-thumb { background: #4b4845; border-radius: 999px; }
+        ::-webkit-scrollbar-thumb { background: #4a3b5c; border-radius: 999px; }
 
         .text-muted { color: var(--muted); }
 
@@ -377,20 +405,54 @@ HTML_PAYLOAD = r'''
             pointer-events: none;
         }
 
+        /* Improved Grimoire styling */
+        .grimoire-container {
+            background: linear-gradient(180deg, #231c2c, #16121c);
+            border-left: 1px solid #3c314a;
+            box-shadow: -5px 0 25px rgba(0,0,0,0.4);
+        }
+        
+        .grimoire-header {
+            background: rgba(0, 0, 0, 0.2);
+            border-bottom: 1px solid #3c314a;
+        }
+
         .spell-card {
+            background: linear-gradient(145deg, #2b2238, #1c1524);
+            border: 1px solid rgba(255,255,255,0.05);
+            border-radius: 12px;
             position: relative;
             overflow: hidden;
-            transition: transform 0.18s ease, box-shadow 0.18s ease, opacity 0.18s ease;
-            background: #161513;
+            transition: all 0.2s cubic-bezier(0.25, 0.8, 0.25, 1);
+            padding: 0.75rem;
         }
+        
+        .spell-card::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0; height: 3px;
+            background: var(--spell-color);
+            opacity: 0.8;
+        }
+
+        .spell-card:hover:not(.used) {
+            transform: translateY(-4px) scale(1.02);
+            box-shadow: 0 10px 20px rgba(0,0,0,0.4), 0 0 15px var(--spell-glow);
+            border-color: var(--spell-color);
+            z-index: 10;
+        }
+
         .spell-card.active {
-            transform: translateY(-3px);
-            box-shadow: 0 0 0 1px rgba(255,255,255,0.1), 0 14px 28px rgba(0,0,0,.3);
+            transform: translateY(-4px);
+            box-shadow: 0 0 20px var(--spell-glow), inset 0 0 15px var(--spell-glow);
+            border-color: var(--spell-color);
+            z-index: 10;
         }
+
         .spell-card.used {
-            opacity: 0.3;
-            filter: grayscale(1);
-            pointer-events: none;
+            opacity: 0.35;
+            filter: grayscale(0.9);
+            cursor: not-allowed;
         }
 
         .overlay {
@@ -416,6 +478,11 @@ HTML_PAYLOAD = r'''
             width: 100%;
             max-width: min(85vh, 100%);
             margin: 0 auto;
+        }
+
+        #move-history {
+            background: #110e16;
+            color: #d1c5e0;
         }
     </style>
 </head>
@@ -491,25 +558,25 @@ HTML_PAYLOAD = r'''
         </div>
     </div>
 
-    <div class="w-full lg:w-[380px] xl:w-[420px] bg-[#262421] border-l border-[#3f3e3b] flex flex-col h-[35vh] lg:h-full z-10 shadow-2xl flex-shrink-0">
-        <div class="p-4 border-b border-[#3f3e3b] bg-[#211f1c]">
-            <div class="flex justify-between items-center mb-3">
-                <h3 class="font-bold text-xs text-muted uppercase tracking-widest">
-                    <i class="fa-solid fa-book-journal-whills mr-2"></i>Your Grimoire
-                </h3>
-                <span id="turn-indicator" class="text-[10px] font-bold px-2 py-1 rounded bg-[#1f1e1b] text-muted">WAITING</span>
-            </div>
-            <div id="spells-container" class="flex lg:grid lg:grid-cols-3 gap-2 overflow-x-auto lg:overflow-y-auto lg:max-h-[220px] pb-2 lg:pb-0 pr-1">
-            </div>
+    <!-- Redesigned Grimoire Panel -->
+    <div class="w-full lg:w-[380px] xl:w-[420px] grimoire-container flex flex-col h-[35vh] lg:h-full z-10 flex-shrink-0">
+        <div class="p-4 grimoire-header flex justify-between items-center">
+            <h3 class="font-bold text-sm text-[#d1c5e0] uppercase tracking-widest flex items-center">
+                <i class="fa-solid fa-book-journal-whills mr-2 text-[#8b5cf6]"></i>Your Grimoire
+            </h3>
+            <span id="turn-indicator" class="text-[10px] font-bold px-2 py-1 rounded bg-[#1f1e1b] text-muted">WAITING</span>
+        </div>
+        
+        <div id="spells-container" class="flex lg:grid lg:grid-cols-2 gap-3 overflow-x-auto lg:overflow-y-auto p-4 max-h-[300px]">
         </div>
 
-        <div class="px-4 py-3 border-b border-[#3f3e3b] flex justify-between items-center bg-[#262421]">
-            <span class="font-bold text-xs text-muted uppercase tracking-widest"><i class="fa-solid fa-list-ul mr-2"></i>Match Log</span>
+        <div class="px-4 py-3 border-y border-[#3c314a] flex justify-between items-center bg-[rgba(0,0,0,0.2)]">
+            <span class="font-bold text-xs text-[#a79cb7] uppercase tracking-widest"><i class="fa-solid fa-list-ul mr-2"></i>Match Log</span>
             <button id="resign-btn" class="text-xs text-red-400 hover:text-red-300 transition font-bold">
                 <i class="fa-solid fa-flag mr-1"></i>Resign
             </button>
         </div>
-        <div class="flex-grow overflow-y-auto p-4 bg-[#1f1e1b] font-mono text-sm shadow-inner" id="move-history"></div>
+        <div class="flex-grow overflow-y-auto p-4 font-mono text-sm shadow-inner" id="move-history"></div>
     </div>
 </div>
 
@@ -605,27 +672,27 @@ function isMyTurn() {
 function setMoveLogFromSan(text, color, isSpell = false) {
     const history = document.getElementById("move-history");
     const safeText = (text || "").toString();
-    const style = isSpell ? "text-purple-300 font-bold" : "text-[#e3e3e3]";
-    const icon = isSpell ? '<i class="fa-solid fa-wand-magic-sparkles text-[10px] mr-1 text-purple-300"></i>' : "";
+    const style = isSpell ? "text-[#b490e5] font-bold" : "text-[#d1c5e0]";
+    const icon = isSpell ? '<i class="fa-solid fa-wand-magic-sparkles text-[10px] mr-1"></i>' : "";
 
     if (color === "w") {
         history.insertAdjacentHTML("beforeend", `
-            <div class="flex py-1.5 border-b border-[#3f3e3b]">
-                <div class="w-8 text-muted">${moveNum}.</div>
+            <div class="flex py-1.5 border-b border-[#3c314a]">
+                <div class="w-8 text-[#a79cb7]">${moveNum}.</div>
                 <div class="w-1/2 ${style}">${icon}${safeText}</div>
-                <div class="w-1/2 text-right text-muted" id="black-move-${moveNum}">...</div>
+                <div class="w-1/2 text-right text-[#a79cb7]" id="black-move-${moveNum}">...</div>
             </div>
         `);
     } else {
         const el = document.getElementById(`black-move-${moveNum}`);
         if (el) {
             el.innerHTML = `<span class="${style}">${icon}${safeText}</span>`;
-            el.classList.remove("text-muted");
+            el.classList.remove("text-muted", "text-[#a79cb7]");
             el.classList.add("text-left");
         } else {
             history.insertAdjacentHTML("beforeend", `
-                <div class="flex py-1.5 border-b border-[#3f3e3b]">
-                    <div class="w-8 text-muted">${moveNum}.</div>
+                <div class="flex py-1.5 border-b border-[#3c314a]">
+                    <div class="w-8 text-[#a79cb7]">${moveNum}.</div>
                     <div class="w-1/2"></div>
                     <div class="w-1/2 ${style}">${icon}${safeText}</div>
                 </div>
@@ -722,11 +789,11 @@ function updateUI() {
 
     if (gameReady) {
         turnIndicator.innerText = isMy ? "YOUR TURN" : "OPPONENT'S TURN";
-        turnIndicator.className = `text-[10px] font-bold px-2 py-1 rounded shadow ${isMy ? "bg-[#81b64c] text-black" : "bg-[#1f1e1b] text-muted"}`;
+        turnIndicator.className = `text-[10px] font-bold px-2 py-1 rounded shadow ${isMy ? "bg-[#8b5cf6] text-white" : "bg-[#1f1e1b] text-muted"}`;
         myStatus.innerText = isMy ? "Thinking" : "Waiting";
-        myStatus.className = `text-xs font-mono font-bold px-3 py-2 rounded shadow ${isMy ? "bg-[#81b64c] text-black" : "bg-[#1f1e1b] text-muted"}`;
+        myStatus.className = `text-xs font-mono font-bold px-3 py-2 rounded shadow ${isMy ? "bg-[#8b5cf6] text-white" : "bg-[#1f1e1b] text-muted"}`;
         oppStatus.innerText = !isMy ? "Thinking" : "Waiting";
-        oppStatus.className = `text-xs font-mono font-bold px-3 py-2 rounded shadow ${!isMy ? "bg-[#81b64c] text-black" : "bg-[#1f1e1b] text-muted"}`;
+        oppStatus.className = `text-xs font-mono font-bold px-3 py-2 rounded shadow ${!isMy ? "bg-[#8b5cf6] text-white" : "bg-[#1f1e1b] text-muted"}`;
     }
 
     const handContainer = document.getElementById("spells-container");
@@ -738,15 +805,14 @@ function updateUI() {
             const isActive = activeSpell && activeSpell.id === spell.id;
 
             const card = document.createElement("div");
-            card.className = `spell-card min-w-[102px] lg:w-auto p-3 rounded-xl border text-center flex flex-col items-center justify-center ${isUsed ? "used" : ""} ${isActive ? "active" : ""} ${!isUsed && gameReady && game.turn() === myColor ? "cursor-pointer" : ""}`;
-            card.style.borderColor = spell.color;
-            card.style.boxShadow = `inset 0 0 0 1px ${spell.color}33, 0 8px 22px rgba(0,0,0,0.25)`;
-            card.style.background = `linear-gradient(180deg, ${spell.color}20, #161513 55%)`;
+            card.className = `spell-card min-w-[140px] lg:w-auto text-center flex flex-col items-center justify-center ${isUsed ? "used" : ""} ${isActive ? "active" : ""} ${!isUsed && gameReady && game.turn() === myColor ? "cursor-pointer" : ""}`;
+            card.style.setProperty("--spell-color", spell.color);
+            card.style.setProperty("--spell-glow", spell.color + "66");
 
             card.innerHTML = `
-                <div class="text-2xl mb-1 drop-shadow-md" style="color:${spell.color}"><i class="fa-solid ${spell.icon}"></i></div>
-                <div class="text-[10px] font-extrabold leading-tight mb-1 text-white tracking-wide">${spell.name}</div>
-                <div class="text-[9px] text-muted leading-tight hidden lg:block">${spell.desc}</div>
+                <div class="text-2xl mb-1.5 drop-shadow-md" style="color:${spell.color}"><i class="fa-solid ${spell.icon}"></i></div>
+                <div class="text-[11px] font-bold leading-tight mb-1 text-white tracking-wide uppercase">${spell.name}</div>
+                <div class="text-[10px] text-[#a79cb7] leading-snug hidden lg:block">${spell.desc}</div>
             `;
 
             card.onclick = () => {
@@ -763,7 +829,6 @@ function updateUI() {
                         player_id: playerId,
                         spell_id: spell.id,
                         fen: game.fen(),
-                        consume_turn: spell.id !== "expelliarmus",
                         log: spell.name.toUpperCase()
                     });
                     cancelSpell();
@@ -817,16 +882,28 @@ function handleSquareClick(sq) {
     if (selectedSquare) {
         const temp = new Chess(game.fen());
         const move = temp.move({ from: selectedSquare, to: sq, promotion: "q" });
+        
         if (move) {
+            const san = move.san;
+            const nextFen = temp.fen();
+            
+            // --- OPTIMISTIC UI UPDATE --- 
+            // Apply the move immediately to prevent any UI flickering or lag
+            game.move({ from: selectedSquare, to: sq, promotion: "q" });
+            if (san.includes("x")) sounds.capture.play().catch(()=>{});
+            else sounds.move.play().catch(()=>{});
+            setMoveLogFromSan(san, myColor, false);
+            
             socket.emit("standard_move", {
                 room,
                 player_id: playerId,
                 from: move.from,
                 to: move.to,
-                san: move.san,
-                fen: temp.fen()
+                san: san,
+                fen: nextFen
             });
         }
+        
         selectedSquare = null;
         updateUI();
     }
@@ -926,7 +1003,6 @@ function processSpellClick(sq) {
             player_id: playerId,
             spell_id: activeSpell.id,
             fen: nextFen,
-            consume_turn: activeSpell.id !== "expelliarmus",
             log: logText
         });
         cancelSpell();
@@ -1018,23 +1094,40 @@ socket.on("room_state", (state) => {
     updateUI();
 });
 
-socket.on("board_update", (data) => {
-    if (data.fen) {
-        game.load(data.fen);
+socket.on("sync_spells", (data) => {
+    if (myColor && data.used[myColor]) {
+        usedSpells = new Set(data.used[myColor]);
+        updateUI();
     }
+});
 
-    if (data.is_spell) {
-        sounds.spell.play().catch(() => {});
-        if (data.color === myColor && data.used_spell_id) {
-            usedSpells.add(data.used_spell_id);
+socket.on("board_update", (data) => {
+    const isMyNormalMove = (data.color === myColor && !data.is_spell);
+
+    // If it's NOT our normal move, parse the update fully
+    if (!isMyNormalMove) {
+        if (data.fen) game.load(data.fen);
+        
+        if (data.is_spell) {
+            sounds.spell.play().catch(() => {});
+        } else {
+            if ((data.san || "").includes("x")) sounds.capture.play().catch(() => {});
+            else sounds.move.play().catch(() => {});
+        }
+        
+        if (data.san) {
+            setMoveLogFromSan(data.san, data.color, !!data.is_spell);
         }
     } else {
-        if ((data.san || "").includes("x")) sounds.capture.play().catch(() => {});
-        else sounds.move.play().catch(() => {});
+        // If it was our standard move, we already simulated the visuals/sounds optimistically
+        // Just enforce the FEN string check in case of desync
+        if (data.fen && game.fen() !== data.fen) {
+            game.load(data.fen);
+        }
     }
 
-    if (data.san) {
-        setMoveLogFromSan(data.san, data.color, !!data.is_spell);
+    if (data.is_spell && data.color === myColor && data.used_spell_id) {
+        usedSpells.add(data.used_spell_id);
     }
 
     if (data.room_state && data.room_state.started) {
