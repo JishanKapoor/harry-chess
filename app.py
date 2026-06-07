@@ -14,12 +14,13 @@ SVG_AVADA = '''<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"><ci
 SVG_IMPERIO = '''<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"><path d="M10 50 Q50 10 90 50 Q50 90 10 50 Z" fill="none" stroke="#ec4899" stroke-width="4"/><circle cx="50" cy="50" r="18" fill="#f472b6" filter="drop-shadow(0 0 12px #ec4899)"/><circle cx="50" cy="50" r="6" fill="#831843"/><path d="M50 68 L35 100 M50 68 L50 100 M50 68 L65 100" stroke="#fbcfe8" stroke-width="2" stroke-dasharray="4 4"/></svg>'''
 SVG_SECTUM = '''<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"><path d="M20 20 L80 80 M30 10 L90 70 M10 30 L70 90" stroke="#d1d5db" stroke-width="4" stroke-linecap="round"/><path d="M50 50 Q60 70 50 80 Q40 70 50 50 Z" fill="#ef4444" filter="drop-shadow(0 0 5px #ef4444)"/><circle cx="70" cy="40" r="4" fill="#ef4444"/><circle cx="30" cy="70" r="3" fill="#ef4444"/></svg>'''
 SVG_FIENDFYRE = '''<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"><path d="M50 95 C20 95 25 60 40 40 C35 30 25 25 30 15 C45 25 45 40 50 30 C55 40 55 25 70 15 C75 25 65 30 60 40 C75 60 80 95 50 95 Z" fill="#ea580c" filter="drop-shadow(0 0 8px #f97316)"/><path d="M50 85 C35 85 38 65 45 50 C48 40 52 40 55 50 C62 65 65 85 50 85 Z" fill="#fb923c"/><circle cx="42" cy="65" r="3" fill="#7c2d12"/><circle cx="58" cy="65" r="3" fill="#7c2d12"/></svg>'''
-SVG_PORTKEY = '''<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"><ellipse cx="50" cy="75" rx="35" ry="10" fill="none" stroke="#3b82f6" stroke-width="3" stroke-dasharray="8 4" filter="drop-shadow(0 0 10px #60a5fa)"/><path d="M60 75 L40 75 C30 75 25 65 30 55 L40 45 L40 25 C40 15 50 15 55 15 C60 15 65 20 65 25 L60 45 L70 55 C75 65 70 75 60 75 Z" fill="#78350f" stroke="#451a03" stroke-width="4"/><path d="M40 45 L50 55 L60 45" stroke="#451a03" stroke-width="3" fill="none"/><circle cx="55" cy="25" r="3" fill="#451a03"/></svg>'''
+SVG_PORTKEY = '''<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"><defs><radialGradient id="portalGlow" cx="50%" cy="50%" r="50%"><stop offset="0%" stop-color="#ffffff"/><stop offset="40%" stop-color="#3b82f6"/><stop offset="80%" stop-color="#1e3a8a"/><stop offset="100%" stop-color="#000000" stop-opacity="0"/></radialGradient></defs><circle cx="50" cy="50" r="45" fill="url(#portalGlow)" filter="drop-shadow(0 0 10px #60a5fa)"/><path d="M50 15 Q75 25 85 50 Q75 75 50 85 Q25 75 15 50 Q25 25 50 15 Z" fill="none" stroke="#93c5fd" stroke-width="3" stroke-dasharray="6 4"/><circle cx="50" cy="50" r="12" fill="#ffffff" filter="drop-shadow(0 0 8px #fff)"/><path d="M50 10 L50 0 M50 90 L50 100 M10 50 L0 50 M90 50 L100 50" stroke="#bfdbfe" stroke-width="4" stroke-linecap="round"/></svg>'''
 SVG_EXPELLIARMUS = '''<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"><path d="M20 80 L80 20" stroke="#78350f" stroke-width="8" stroke-linecap="round"/><path d="M70 30 L80 20" stroke="#fbbf24" stroke-width="8" stroke-linecap="round"/><circle cx="80" cy="20" r="12" fill="none" stroke="#ef4444" stroke-width="3" filter="drop-shadow(0 0 8px #ef4444)"/><path d="M80 5 L80 15 M80 25 L80 35 M65 20 L75 20 M85 20 L95 20 M70 10 L75 15 M85 25 L90 30 M70 30 L75 25 M85 10 L90 15" stroke="#ef4444" stroke-width="3" stroke-linecap="round"/></svg>'''
 SVG_PROTEGO = '''<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"><path d="M50 10 L90 30 L90 60 Q90 90 50 95 Q10 90 10 60 L10 30 Z" fill="none" stroke="#3b82f6" stroke-width="6" filter="drop-shadow(0 0 10px #60a5fa)"/><path d="M50 20 L80 35 L80 55 Q80 80 50 85 Q20 80 20 55 L20 35 Z" fill="#1e3a8a" opacity="0.6"/><path d="M30 30 L70 70 M30 70 L70 30" stroke="#60a5fa" stroke-width="2" opacity="0.5"/></svg>'''
 SVG_ALOHOMORA = '''<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"><circle cx="30" cy="50" r="15" fill="none" stroke="#eab308" stroke-width="6" filter="drop-shadow(0 0 6px #facc15)"/><path d="M45 50 L85 50 M75 50 L75 65 M65 50 L65 65" stroke="#eab308" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/><circle cx="30" cy="50" r="5" fill="#ca8a04"/></svg>'''
 SVG_LEVIOSA = '''<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"><path d="M20 80 Q10 50 40 40 Q50 20 80 20 Q70 50 60 60 Q40 90 20 80 Z" fill="#f3f4f6" stroke="#9ca3af" stroke-width="2" filter="drop-shadow(0 0 10px #ffffff)"/><path d="M20 80 Q40 70 80 20" stroke="#d1d5db" stroke-width="2" fill="none"/><path d="M20 90 Q50 100 80 90" stroke="#e5e7eb" stroke-width="3" stroke-dasharray="5 5" fill="none"/></svg>'''
 SVG_BOMBARDA = '''<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"><path d="M50 10 L60 35 L85 30 L70 50 L90 70 L65 65 L50 90 L35 65 L10 70 L30 50 L15 30 L40 35 Z" fill="#ef4444" filter="drop-shadow(0 0 12px #dc2626)"/><path d="M50 25 L55 40 L70 40 L60 50 L65 65 L50 55 L35 65 L40 50 L30 40 L45 40 Z" fill="#facc15"/><circle cx="50" cy="50" r="8" fill="#ffffff" filter="drop-shadow(0 0 5px #fff)"/></svg>'''
+SVG_PETRIFICUS = '''<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"><rect x="25" y="35" width="50" height="45" rx="8" fill="#0891b2" stroke="#67e8f9" stroke-width="4" filter="drop-shadow(0 0 10px #06b6d4)"/><path d="M35 35 V20 A15 15 0 0 1 65 20 V35" fill="none" stroke="#67e8f9" stroke-width="8" stroke-linecap="round"/><circle cx="50" cy="57" r="7" fill="#cffafe"/><path d="M47 64 L44 76 H56 L53 64" fill="#cffafe"/><path d="M15 50 L5 50 M85 50 L95 50 M50 15 L50 5 M50 85 L50 95 M25 25 L15 15 M75 25 L85 15 M25 75 L15 85 M75 75 L85 85" stroke="#a5f3fc" stroke-width="4" stroke-linecap="round"/></svg>'''
 
 TIME_TURNER = {"id": "time", "name": "Time-Turner", "type": "instant", "desc": "Rewind the board to before opponent's last move.", "color": "#eab308", "image": SVG_TIME}
 
@@ -34,6 +35,7 @@ SPELLS_POOL = [
     {"id": "alohomora", "name": "Alohomora", "type": "drag_own", "desc": "Teleport your piece to any empty square on your half.", "color": "#eab308", "image": SVG_ALOHOMORA},
     {"id": "leviosa", "name": "Leviosa", "type": "drag_own", "desc": "Float your piece to an adjacent empty square.", "color": "#f3f4f6", "image": SVG_LEVIOSA},
     {"id": "bombarda", "name": "Bombarda", "type": "bombarda", "desc": "Explode a cross-shaped area (+).", "color": "#dc2626", "image": SVG_BOMBARDA},
+    {"id": "petrificus", "name": "Petrificus Totalus", "type": "instant", "desc": "Paralyze opponent: Make 2 consecutive moves!", "color": "#06b6d4", "image": SVG_PETRIFICUS},
 ]
 
 ROOMS = {}
@@ -54,6 +56,7 @@ def get_room(room_id: str):
         ROOMS[room_id] = {
             "fen": START_FEN,
             "turn": "w",
+            "extra_turn": None, # Tracks if someone has a double move
             "history": [START_FEN],
             "player_ids": {"w": None, "b": None},
             "player_names": {"w": "White", "b": "Black"},
@@ -140,9 +143,23 @@ def handle_standard_move(data):
     if color is None or room["turn"] != color or not fen:
         return
 
-    room["fen"] = fen
-    room["turn"] = fen_side_to_move(fen)
-    room["history"].append(fen)
+    # Handle Extra Turn logic for "Double Move" spell
+    if room.get("extra_turn") == color:
+        parts = fen.split(" ")
+        if len(parts) > 1:
+            parts[1] = color # Force FEN turn back to the caster
+        if len(parts) > 3:
+            parts[3] = "-"
+        fen = " ".join(parts)
+        
+        room["fen"] = fen
+        room["turn"] = color
+        room["extra_turn"] = None # Consume the extra turn
+    else:
+        room["fen"] = fen
+        room["turn"] = fen_side_to_move(fen)
+        
+    room["history"].append(room["fen"])
     room["last_action"] = {
         "type": "move",
         "color": color,
@@ -201,14 +218,25 @@ def handle_spell_effect(data):
             else:
                 log_text = "EXPELLIARMUS (Nothing to disarm)"
 
-        next_turn = "b" if color == "w" else "w"
+        # Turn resolution based on double move spell
+        if spell_id == "petrificus":
+            room["extra_turn"] = color
+            next_turn = color
+            log_text = "PETRIFICUS TOTALUS (Double Move!)"
+        else:
+            if room.get("extra_turn") == color:
+                next_turn = color
+                room["extra_turn"] = None
+            else:
+                next_turn = "b" if color == "w" else "w"
+                
         room["turn"] = next_turn
         parts = fen.split(" ")
         if len(parts) > 1:
             parts[1] = next_turn
         if len(parts) > 3:
             parts[3] = "-"
-        if color == "b" and len(parts) > 5:
+        if next_turn == "w" and color == "b" and len(parts) > 5:
             try:
                 parts[5] = str(int(parts[5]) + 1)
             except Exception:
@@ -245,7 +273,6 @@ def handle_spell_effect(data):
     
     emit("sync_spells", {"used": {"w": list(room["used"]["w"]), "b": list(room["used"]["b"])}}, to=room_id)
 
-    # If Kings were killed, end the game from the backend immediately
     if not w_king_alive or not b_king_alive:
         room["game_over"] = True
         if not w_king_alive and not b_king_alive:
@@ -417,7 +444,6 @@ HTML_PAYLOAD = r'''
         .sq-selected { position:absolute; inset:0; background: rgba(20,85,30,0.5); pointer-events:none; }
         .sq-highlight { position:absolute; inset:0; background: rgba(255,255,51,0.35); pointer-events:none; }
         
-        /* Check UI from Chess.com */
         .sq-check { 
             position:absolute; 
             inset:0; 
@@ -823,7 +849,7 @@ function updateUI() {
                 pieceEl.className = "piece";
             }
 
-            // RED KING LOGIC (Issue 1)
+            // RED KING LOGIC (Checkmate Warning Glow)
             let isKingInCheck = (p && p.type === 'k' && p.color === turnColor && isCheck);
 
             if (sq === selectedSquare || sq === spellSourceSq) {
