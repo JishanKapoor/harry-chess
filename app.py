@@ -4,26 +4,36 @@ from flask import Flask, render_template_string, request
 from flask_socketio import SocketIO, join_room, emit
 
 app = Flask(__name__)
-app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "wizard_chess_secret_v4")
+app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "wizard_chess_secret_v5")
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode="threading")
 
 START_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
 
-# Custom SVG Artwork for Spells
 SVG_TIME = '''<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"><circle cx="50" cy="50" r="45" fill="none" stroke="#eab308" stroke-width="3" stroke-dasharray="10 5"/><circle cx="50" cy="50" r="38" fill="none" stroke="#eab308" stroke-width="2"/><path d="M40 30 L60 30 L50 50 Z" fill="#fef08a"/><path d="M40 70 L60 70 L50 50 Z" fill="#ca8a04"/><path d="M35 25 L65 25 M35 75 L65 75" stroke="#eab308" stroke-width="4" stroke-linecap="round"/><circle cx="50" cy="50" r="8" fill="#fef08a"/></svg>'''
-SVG_AVADA = '''<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"><path d="M80 20 L40 50 L55 60 L20 90" stroke="#22c55e" stroke-width="6" fill="none" stroke-linecap="round" stroke-linejoin="round" filter="drop-shadow(0 0 8px #22c55e)"/><circle cx="30" cy="30" r="15" fill="none" stroke="#4ade80" stroke-width="2"/><path d="M25 25 Q30 20 35 25 M25 35 Q30 40 35 35" stroke="#4ade80" stroke-width="2" fill="none"/></svg>'''
-SVG_IMPERIO = '''<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"><path d="M10 50 Q50 10 90 50 Q50 90 10 50 Z" fill="none" stroke="#ec4899" stroke-width="4"/><circle cx="50" cy="50" r="15" fill="#f472b6" filter="drop-shadow(0 0 10px #ec4899)"/><circle cx="50" cy="50" r="5" fill="#831843"/><path d="M50 65 L40 90 M50 65 L50 95 M50 65 L60 90" stroke="#fbcfe8" stroke-width="2" stroke-dasharray="4 4"/></svg>'''
-SVG_SECTUM = '''<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"><path d="M20 20 L80 80 M30 10 L90 70 M10 30 L70 90" stroke="#d1d5db" stroke-width="4" stroke-linecap="round"/><path d="M50 50 Q60 70 50 80 Q40 70 50 50 Z" fill="#ef4444" filter="drop-shadow(0 0 5px #ef4444)"/><path d="M70 30 Q75 45 70 50 Q65 45 70 30 Z" fill="#ef4444"/></svg>'''
-SVG_FIENDFYRE = '''<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"><path d="M50 90 Q20 90 30 60 Q40 30 50 10 Q60 30 70 60 Q80 90 50 90 Z" fill="#ea580c"/><path d="M50 85 Q30 85 38 65 Q45 45 50 25 Q55 45 62 65 Q70 85 50 85 Z" fill="#fb923c"/><path d="M50 75 Q40 75 44 60 Q48 45 50 35 Q52 45 56 60 Q60 75 50 75 Z" fill="#fef08a"/><circle cx="42" cy="55" r="3" fill="#7c2d12"/><circle cx="58" cy="55" r="3" fill="#7c2d12"/></svg>'''
-SVG_ACCIO = '''<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"><path d="M80 80 L30 30" stroke="#78350f" stroke-width="8" stroke-linecap="round"/><path d="M30 30 L20 20" stroke="#fcd34d" stroke-width="6" stroke-linecap="round"/><path d="M20 20 Q40 5 60 20 M30 30 Q50 15 70 30 M40 40 Q60 25 80 40" fill="none" stroke="#38bdf8" stroke-width="3" stroke-dasharray="6 4" filter="drop-shadow(0 0 5px #38bdf8)"/></svg>'''
+SVG_AVADA = '''<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"><path d="M50 20 C30 20 20 40 20 50 C20 70 35 80 40 90 L60 90 C65 80 80 70 80 50 C80 40 70 20 50 20 Z" fill="#166534" stroke="#22c55e" stroke-width="3"/><path d="M35 45 Q40 40 45 45 M55 45 Q60 40 65 45" stroke="#4ade80" stroke-width="4" stroke-linecap="round" fill="none"/><path d="M50 60 L50 75" stroke="#4ade80" stroke-width="4" stroke-linecap="round"/><path d="M80 10 L40 50 L55 60 L20 100" stroke="#4ade80" stroke-width="5" fill="none" stroke-linecap="round" stroke-linejoin="round" filter="drop-shadow(0 0 8px #22c55e)"/></svg>'''
+SVG_IMPERIO = '''<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"><path d="M10 50 Q50 10 90 50 Q50 90 10 50 Z" fill="none" stroke="#ec4899" stroke-width="4"/><circle cx="50" cy="50" r="18" fill="#f472b6" filter="drop-shadow(0 0 12px #ec4899)"/><circle cx="50" cy="50" r="6" fill="#831843"/><path d="M50 68 L35 100 M50 68 L50 100 M50 68 L65 100" stroke="#fbcfe8" stroke-width="2" stroke-dasharray="4 4"/></svg>'''
+SVG_SECTUM = '''<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"><path d="M20 20 L80 80 M30 10 L90 70 M10 30 L70 90" stroke="#d1d5db" stroke-width="4" stroke-linecap="round"/><path d="M50 50 Q60 70 50 80 Q40 70 50 50 Z" fill="#ef4444" filter="drop-shadow(0 0 5px #ef4444)"/><circle cx="70" cy="40" r="4" fill="#ef4444"/><circle cx="30" cy="70" r="3" fill="#ef4444"/></svg>'''
+SVG_FIENDFYRE = '''<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"><path d="M50 95 C20 95 25 60 40 40 C35 30 25 25 30 15 C45 25 45 40 50 30 C55 40 55 25 70 15 C75 25 65 30 60 40 C75 60 80 95 50 95 Z" fill="#ea580c" filter="drop-shadow(0 0 8px #f97316)"/><path d="M50 85 C35 85 38 65 45 50 C48 40 52 40 55 50 C62 65 65 85 50 85 Z" fill="#fb923c"/><circle cx="42" cy="65" r="3" fill="#7c2d12"/><circle cx="58" cy="65" r="3" fill="#7c2d12"/></svg>'''
+SVG_PORTKEY = '''<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"><path d="M30 80 C20 80 20 60 30 50 C30 30 50 20 60 20 C70 20 80 30 80 40 L60 80 Z" fill="#1e3a8a" stroke="#3b82f6" stroke-width="4" stroke-linejoin="round"/><path d="M25 80 L65 80" stroke="#60a5fa" stroke-width="6" stroke-linecap="round"/><circle cx="50" cy="50" r="40" fill="none" stroke="#60a5fa" stroke-width="2" stroke-dasharray="10 10" filter="drop-shadow(0 0 6px #3b82f6)"/><path d="M30 50 Q50 30 60 20" stroke="#93c5fd" stroke-width="2" fill="none"/></svg>'''
+SVG_EXPELLIARMUS = '''<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"><path d="M20 80 L80 20" stroke="#78350f" stroke-width="8" stroke-linecap="round"/><path d="M70 30 L80 20" stroke="#fbbf24" stroke-width="8" stroke-linecap="round"/><circle cx="80" cy="20" r="12" fill="none" stroke="#ef4444" stroke-width="3" filter="drop-shadow(0 0 8px #ef4444)"/><path d="M80 5 L80 15 M80 25 L80 35 M65 20 L75 20 M85 20 L95 20 M70 10 L75 15 M85 25 L90 30 M70 30 L75 25 M85 10 L90 15" stroke="#ef4444" stroke-width="3" stroke-linecap="round"/></svg>'''
+SVG_PROTEGO = '''<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"><path d="M50 10 L90 30 L90 60 Q90 90 50 95 Q10 90 10 60 L10 30 Z" fill="none" stroke="#3b82f6" stroke-width="6" filter="drop-shadow(0 0 10px #60a5fa)"/><path d="M50 20 L80 35 L80 55 Q80 80 50 85 Q20 80 20 55 L20 35 Z" fill="#1e3a8a" opacity="0.6"/><path d="M30 30 L70 70 M30 70 L70 30" stroke="#60a5fa" stroke-width="2" opacity="0.5"/></svg>'''
+SVG_ALOHOMORA = '''<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"><circle cx="30" cy="50" r="15" fill="none" stroke="#eab308" stroke-width="6" filter="drop-shadow(0 0 6px #facc15)"/><path d="M45 50 L85 50 M75 50 L75 65 M65 50 L65 65" stroke="#eab308" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/><circle cx="30" cy="50" r="5" fill="#ca8a04"/></svg>'''
+SVG_LEVIOSA = '''<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"><path d="M20 80 Q10 50 40 40 Q50 20 80 20 Q70 50 60 60 Q40 90 20 80 Z" fill="#f3f4f6" stroke="#9ca3af" stroke-width="2" filter="drop-shadow(0 0 10px #ffffff)"/><path d="M20 80 Q40 70 80 20" stroke="#d1d5db" stroke-width="2" fill="none"/><path d="M20 90 Q50 100 80 90" stroke="#e5e7eb" stroke-width="3" stroke-dasharray="5 5" fill="none"/></svg>'''
+SVG_BOMBARDA = '''<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"><path d="M50 10 L60 35 L85 30 L70 50 L90 70 L65 65 L50 90 L35 65 L10 70 L30 50 L15 30 L40 35 Z" fill="#ef4444" filter="drop-shadow(0 0 10px #dc2626)"/><path d="M50 25 L55 40 L70 40 L60 50 L65 65 L50 55 L35 65 L40 50 L30 40 L45 40 Z" fill="#facc15"/><circle cx="50" cy="50" r="5" fill="#ffffff"/></svg>'''
 
-SPELLS = [
-    {"id": "time", "name": "Time-Turner", "type": "instant", "desc": "Reverse opponent's last spell or move.", "color": "#eab308", "image": SVG_TIME},
-    {"id": "avada", "name": "Avada Kedavra", "type": "enemy", "desc": "Destroy an enemy piece instantly.", "color": "#22c55e", "image": SVG_AVADA},
-    {"id": "imperio", "name": "Imperio", "type": "drag_enemy", "desc": "Command an enemy piece to move.", "color": "#ec4899", "image": SVG_IMPERIO},
+TIME_TURNER = {"id": "time", "name": "Time-Turner", "type": "instant", "desc": "Rewind the board to before opponent's last move.", "color": "#eab308", "image": SVG_TIME}
+
+SPELLS_POOL = [
+    {"id": "avada", "name": "Avada Kedavra", "type": "enemy", "desc": "Click an enemy piece to destroy it.", "color": "#22c55e", "image": SVG_AVADA},
+    {"id": "imperio", "name": "Imperio", "type": "drag_enemy", "desc": "Move an enemy piece as your own.", "color": "#ec4899", "image": SVG_IMPERIO},
     {"id": "sectum", "name": "Sectumsempra", "type": "enemy", "desc": "Demote an enemy piece to a Pawn.", "color": "#ef4444", "image": SVG_SECTUM},
-    {"id": "fiendfyre", "name": "Fiendfyre", "type": "any", "desc": "Incinerate a 3x3 square area.", "color": "#f97316", "image": SVG_FIENDFYRE},
-    {"id": "accio", "name": "Accio", "type": "drag_own", "desc": "Summon your piece up to 2 squares.", "color": "#0ea5e9", "image": SVG_ACCIO},
+    {"id": "fiendfyre", "name": "Fiendfyre", "type": "any", "desc": "Destroy a 3x3 square area completely.", "color": "#f97316", "image": SVG_FIENDFYRE},
+    {"id": "portkey", "name": "Portkey", "type": "drag_own", "desc": "Teleport your piece to ANY empty square.", "color": "#3b82f6", "image": SVG_PORTKEY},
+    {"id": "expelliarmus", "name": "Expelliarmus", "type": "instant", "desc": "Disarm: Destroy a random spell from opponent.", "color": "#ef4444", "image": SVG_EXPELLIARMUS},
+    {"id": "protego", "name": "Protego", "type": "own_pawn", "desc": "Promote your Pawn to a Knight instantly.", "color": "#60a5fa", "image": SVG_PROTEGO},
+    {"id": "alohomora", "name": "Alohomora", "type": "drag_own", "desc": "Teleport your piece to any empty square on your half.", "color": "#eab308", "image": SVG_ALOHOMORA},
+    {"id": "leviosa", "name": "Leviosa", "type": "drag_own", "desc": "Float your piece to an adjacent empty square.", "color": "#f3f4f6", "image": SVG_LEVIOSA},
+    {"id": "bombarda", "name": "Bombarda", "type": "bombarda", "desc": "Explode a cross-shaped area (+).", "color": "#dc2626", "image": SVG_BOMBARDA},
 ]
 
 ROOMS = {}
@@ -34,19 +44,24 @@ def fen_side_to_move(fen: str) -> str:
     except Exception:
         return "w"
 
-def fresh_hand():
-    # Both players get the exact same 6 spells. Each can only be used once.
-    return list(SPELLS)
-
 def get_room(room_id: str):
     if room_id not in ROOMS:
+        # Generate entirely unique hands for both players from the pool of 10.
+        shuffled_pool = random.sample(SPELLS_POOL, 10)
+        hand_w = shuffled_pool[0:5] + [TIME_TURNER]
+        hand_b = shuffled_pool[5:10] + [TIME_TURNER]
+        
+        # Shuffle so time turner isn't always at the end
+        random.shuffle(hand_w)
+        random.shuffle(hand_b)
+
         ROOMS[room_id] = {
             "fen": START_FEN,
             "turn": "w",
             "history": [START_FEN],
             "player_ids": {"w": None, "b": None},
             "player_names": {"w": "White", "b": "Black"},
-            "hands": {"w": None, "b": None},
+            "hands": {"w": hand_w, "b": hand_b},
             "used": {"w": set(), "b": set()},
             "game_over": False,
             "winner": None,
@@ -106,9 +121,6 @@ def handle_join(data):
 
     join_room(room_id)
 
-    if color in ("w", "b") and room["hands"][color] is None:
-        room["hands"][color] = fresh_hand()
-
     emit("role_assigned", {
         "color": color,
         "hand": room["hands"].get(color, []) if color in ("w", "b") else [],
@@ -166,23 +178,39 @@ def handle_spell_effect(data):
     color = player_color(room, player_id)
     if color is None or room["turn"] != color:
         return
+        
+    # Prevent multi-use of spells
     if spell_id in room["used"][color]:
         return
 
     log_text = (data.get("log") or spell_id).strip()
 
-    # Special Logic for Time-Turner: Reverts Board State and Turns
+    # Time Turner Reversal Logic
     if spell_id == "time":
         if len(room["history"]) < 2:
-            return # Cannot rewind at turn 1
-        room["history"].pop() # Pop the current board state
-        fen = room["history"][-1] # Grabs the previous board state
+            return 
+        room["history"].pop() # Erase the current state
+        fen = room["history"][-1] # Fallback to previous state
+        
+        # Turn swaps back to whoever's turn it was in that history frame
+        room["turn"] = fen_side_to_move(fen) 
         log_text = "TIME-TURNER (Reversed Action)"
     else:
         if not fen:
             return
 
-        # FORCE TURN SWAP for all standard spells to end turn officially
+        if spell_id == "expelliarmus":
+            opp = "b" if color == "w" else "w"
+            if room["hands"].get(opp):
+                available = [s for s in room["hands"][opp] if s["id"] not in room["used"][opp]]
+                if available:
+                    removed = random.choice(available)
+                    room["used"][opp].add(removed["id"])
+                    log_text = f"EXPELLIARMUS (Disarmed {removed['name']})"
+                else:
+                    log_text = "EXPELLIARMUS (Nothing to disarm)"
+
+        # FORCE TURN SWAP for all standard spells so player cannot keep moving
         next_turn = "b" if color == "w" else "w"
         room["turn"] = next_turn
 
@@ -190,7 +218,7 @@ def handle_spell_effect(data):
         if len(parts) > 1:
             parts[1] = next_turn
         if len(parts) > 3:
-            parts[3] = "-"
+            parts[3] = "-"  # Clear en passant target
         if color == "b" and len(parts) > 5:
             try:
                 parts[5] = str(int(parts[5]) + 1)
@@ -200,11 +228,6 @@ def handle_spell_effect(data):
 
     room["used"][color].add(spell_id)
     room["fen"] = fen
-    
-    # If it was a Time-Turner, the turn correctly swaps back to the person who was reversed.
-    if spell_id == "time":
-        room["turn"] = fen_side_to_move(fen)
-        
     room["last_action"] = {
         "type": "spell",
         "color": color,
@@ -212,7 +235,7 @@ def handle_spell_effect(data):
         "log": log_text,
     }
     
-    # Time-Turner action is NOT saved to history, to allow for clean undo states
+    # Do not append Time-Turner to history, so you can't rewind a rewind
     if spell_id != "time":
         room["history"].append(fen)
 
@@ -225,6 +248,14 @@ def handle_spell_effect(data):
         "is_spell": True,
         "used_spell_id": spell_id,
         "room_state": room_snapshot(room_id),
+    }, to=room_id)
+
+    # Sync spells just in case Expelliarmus removed a card
+    emit("sync_spells", {
+        "used": {
+            "w": list(room["used"]["w"]),
+            "b": list(room["used"]["b"])
+        }
     }, to=room_id)
 
 @socketio.on("resign")
@@ -266,25 +297,24 @@ HTML_PAYLOAD = r'''
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&family=Cinzel:wght@600;800&display=swap');
 
         :root {
-            --bg: #0d0b13;
+            --bg: #0f0c13;
             --panel: #1a1523;
-            --panel-2: #16121c;
-            --line: #3c314a;
+            --panel-2: #15111c;
+            --line: #322841;
             --muted: #8b7d9b;
-            --green: #81b64c;
             --light: #ebecd0;
             --dark: #739552;
+            --gold: #eab308;
         }
 
         * { box-sizing: border-box; }
         
-        /* Removed overflow hidden to allow native scrolling on all devices */
         body {
             margin: 0;
             font-family: 'Inter', sans-serif;
-            background-color: var(--bg);
-            background-image: radial-gradient(circle at 50% 50%, #171221 0%, #0d0b13 100%);
+            background: radial-gradient(circle at center, #1b1525 0%, var(--bg) 100%);
             color: #fff;
+            min-height: 100vh;
         }
 
         ::-webkit-scrollbar { width: 8px; height: 8px; }
@@ -388,7 +418,7 @@ HTML_PAYLOAD = r'''
         .grimoire-container {
             background-color: var(--panel-2);
             background-image: radial-gradient(circle at center, rgba(30,25,40,0.8), rgba(15,10,20,1));
-            border-left: 1px solid #4a3b5c;
+            border-left: 1px solid var(--line);
             box-shadow: -10px 0 30px rgba(0,0,0,0.8);
             position: relative;
         }
@@ -398,13 +428,13 @@ HTML_PAYLOAD = r'''
             position: absolute;
             inset: 0;
             background: url('https://www.transparenttextures.com/patterns/cream-paper.png');
-            opacity: 0.05;
+            opacity: 0.03;
             pointer-events: none;
         }
 
         .spell-card {
             background: linear-gradient(145deg, #241d2e 0%, #15111b 100%);
-            border: 2px solid #3c314a;
+            border: 2px solid var(--line);
             position: relative;
             overflow: hidden;
             transition: all 0.25s cubic-bezier(0.25, 0.8, 0.25, 1);
@@ -435,9 +465,9 @@ HTML_PAYLOAD = r'''
         }
 
         .spell-card.used {
-            opacity: 0.35;
+            opacity: 0.3;
             filter: grayscale(1) brightness(0.6);
-            pointer-events: none; /* Physically prevents secondary clicks */
+            pointer-events: none; 
         }
 
         .overlay {
@@ -494,23 +524,19 @@ HTML_PAYLOAD = r'''
 
                 <div id="waiting-overlay" class="overlay">
                     <div class="bg-[var(--panel)] border border-[var(--line)] p-6 rounded-2xl text-center max-w-[92%] shadow-2xl w-[420px]">
-                        <h2 class="text-xl font-bold mb-2 text-white">
-                            <i class="fa-solid fa-chess-knight text-[var(--green)] mr-2"></i>Match Lobby
-                        </h2>
-                        <p class="text-sm text-[var(--muted)] mb-4">Enter your name and send this link to a friend to start.</p>
-                        <div class="flex gap-2 mb-3">
-                            <input type="text" id="name-input" maxlength="24" placeholder="Your name"
-                                   class="w-full bg-black border border-[var(--line)] text-white p-3 rounded-lg text-sm focus:outline-none">
-                        </div>
-                        <div class="flex gap-2">
-                            <input type="text" id="share-link" readonly class="w-full bg-black border border-[var(--line)] text-[var(--muted)] p-3 rounded-lg text-xs font-mono focus:outline-none">
-                            <button id="copy-btn" class="bg-[var(--green)] hover:bg-[#91c95b] text-black font-extrabold px-4 rounded-lg text-sm transition">
-                                <i class="fa-solid fa-copy"></i>
+                        <div id="lobby-content">
+                            <h2 class="text-xl font-bold mb-2 text-white">
+                                <i class="fa-solid fa-hat-wizard text-[var(--gold)] mr-2"></i>Match Lobby
+                            </h2>
+                            <p class="text-sm text-[var(--muted)] mb-4">Enter your name and join the arena.</p>
+                            <div class="flex gap-2 mb-3">
+                                <input type="text" id="name-input" maxlength="24" placeholder="Your name"
+                                       class="w-full bg-black border border-[var(--line)] text-white p-3 rounded-lg text-sm focus:outline-none">
+                            </div>
+                            <button id="join-btn" class="w-full bg-[var(--gold)] text-black font-extrabold px-4 py-3 rounded-lg text-sm transition hover:bg-yellow-400 shadow-lg uppercase tracking-wider">
+                                Enter Match
                             </button>
                         </div>
-                        <button id="join-btn" class="mt-3 w-full bg-white text-black font-extrabold px-4 py-3 rounded-lg text-sm transition hover:bg-gray-200 shadow-lg">
-                            Join Match
-                        </button>
                     </div>
                 </div>
 
@@ -518,7 +544,7 @@ HTML_PAYLOAD = r'''
                     <div class="bg-[var(--panel)] border border-[var(--line)] p-6 rounded-2xl text-center max-w-[92%] shadow-2xl w-[420px]">
                         <h2 class="text-xl font-bold mb-2 text-white"><i class="fa-solid fa-flag text-red-400 mr-2"></i>Game Over</h2>
                         <p id="game-over-text" class="text-sm text-[var(--muted)] mb-4">The game has ended.</p>
-                        <button onclick="window.location.reload()" class="bg-[var(--green)] hover:bg-[#91c95b] text-black font-extrabold px-4 py-3 rounded-lg text-sm transition w-full shadow-lg">Play Again</button>
+                        <button onclick="window.location.reload()" class="bg-[var(--gold)] hover:bg-yellow-400 text-black font-extrabold px-4 py-3 rounded-lg text-sm transition w-full shadow-lg uppercase tracking-wider">Play Again</button>
                     </div>
                 </div>
 
@@ -539,16 +565,16 @@ HTML_PAYLOAD = r'''
                         <div class="flex items-center mt-0.5 min-h-[18px] flex-wrap gap-1" id="captured-bottom"></div>
                     </div>
                 </div>
-                <div class="text-xs font-mono font-bold bg-[var(--green)] text-black px-3 py-2 rounded shrink-0 shadow-lg" id="my-status">Thinking</div>
+                <div class="text-xs font-mono font-bold bg-[#8b5cf6] text-white px-3 py-2 rounded shrink-0 shadow-lg" id="my-status">Thinking</div>
             </div>
         </div>
     </div>
 
-    <!-- Redesigned Grimoire Panel for scrolling -->
+    <!-- Responsive Grimoire Panel for scrolling -->
     <div class="w-full lg:w-[420px] xl:w-[460px] grimoire-container flex flex-col z-10 lg:h-screen lg:sticky top-0 pb-6 lg:pb-0">
         <div class="p-5 border-b border-[var(--line)] bg-[rgba(0,0,0,0.4)] backdrop-blur-sm sticky top-0 z-20 flex justify-between items-center shadow-md">
             <h3 class="font-bold text-sm text-[#e9d5ff] uppercase tracking-widest flex items-center" style="font-family: 'Cinzel', serif;">
-                <i class="fa-solid fa-book-journal-whills mr-2 text-purple-400"></i>The Grimoire
+                <i class="fa-solid fa-book-journal-whills mr-2 text-[#a855f7]"></i>The Grimoire
             </h3>
             <span id="turn-indicator" class="text-[10px] font-bold px-2 py-1 rounded bg-black text-[var(--muted)] border border-[var(--line)]">WAITING</span>
         </div>
@@ -585,13 +611,6 @@ const room = (() => {
     }
     return r;
 })();
-
-document.getElementById("share-link").value = location.href;
-document.getElementById("copy-btn").onclick = async () => {
-    const input = document.getElementById("share-link");
-    input.select();
-    try { await navigator.clipboard.writeText(input.value); } catch (e) {}
-};
 
 const game = new Chess();
 let myColor = null;
@@ -659,8 +678,8 @@ function isMyTurn() {
 function setMoveLogFromSan(text, color, isSpell = false) {
     const history = document.getElementById("move-history");
     const safeText = (text || "").toString();
-    const style = isSpell ? "text-purple-300 font-bold drop-shadow-md" : "text-[#e3e3e3]";
-    const icon = isSpell ? '<i class="fa-solid fa-bolt text-[10px] mr-1 text-purple-400"></i>' : "";
+    const style = isSpell ? "text-[#eab308] font-bold drop-shadow-md" : "text-[#e3e3e3]";
+    const icon = isSpell ? '<i class="fa-solid fa-hat-wizard text-[10px] mr-1 text-[#eab308]"></i>' : "";
 
     if (color === "w") {
         history.insertAdjacentHTML("beforeend", `
@@ -776,13 +795,13 @@ function updateUI() {
 
     if (gameReady) {
         turnIndicator.innerText = isMy ? "YOUR TURN" : "OPPONENT'S TURN";
-        turnIndicator.className = `text-[10px] font-bold px-2 py-1 rounded shadow ${isMy ? "bg-purple-600 text-white border-purple-400" : "bg-black text-[var(--muted)] border-[var(--line)]"}`;
+        turnIndicator.className = `text-[10px] font-bold px-2 py-1 rounded shadow border ${isMy ? "bg-[#6b21a8] text-[#e9d5ff] border-[#9333ea]" : "bg-black text-[var(--muted)] border-[var(--line)]"}`;
         
         myStatus.innerText = isMy ? "Thinking" : "Waiting";
-        myStatus.className = `text-xs font-mono font-bold px-3 py-2 rounded shadow-lg ${isMy ? "bg-[var(--green)] text-black" : "bg-black text-[var(--muted)] border border-[var(--line)]"}`;
+        myStatus.className = `text-xs font-mono font-bold px-3 py-2 rounded shadow-lg ${isMy ? "bg-[#8b5cf6] text-white" : "bg-black text-[var(--muted)] border border-[var(--line)]"}`;
         
         oppStatus.innerText = !isMy ? "Thinking" : "Waiting";
-        oppStatus.className = `text-xs font-mono font-bold px-3 py-2 rounded shadow border ${!isMy ? "bg-[var(--green)] text-black border-transparent" : "bg-black text-[var(--muted)] border-[var(--line)]"}`;
+        oppStatus.className = `text-xs font-mono font-bold px-3 py-2 rounded shadow border ${!isMy ? "bg-[#8b5cf6] text-white border-transparent" : "bg-black text-[var(--muted)] border-[var(--line)]"}`;
     }
 
     const handContainer = document.getElementById("spells-container");
@@ -877,7 +896,7 @@ function handleSquareClick(sq) {
         if (move) {
             const san = move.san;
             
-            // Optimistic UI updates
+            // Optimistic UI updates (fixes lag/flicker)
             game.move({ from: selectedSquare, to: sq, promotion: "q" });
             if (san.includes("x")) sounds.capture.play().catch(()=>{});
             else sounds.move.play().catch(()=>{});
@@ -914,6 +933,31 @@ function processSpellClick(sq) {
                 }
                 nextFen = temp.fen();
             }
+            break;
+            
+        case "bombarda":
+            // Destroy target AND 4 adjacent pieces (if not kings)
+            const fileIdxB = sq.charCodeAt(0);
+            const rankIdxB = parseInt(sq[1], 10);
+            const blastRadius = [
+                sq,
+                String.fromCharCode(fileIdxB + 1) + rankIdxB,
+                String.fromCharCode(fileIdxB - 1) + rankIdxB,
+                String.fromCharCode(fileIdxB) + (rankIdxB + 1),
+                String.fromCharCode(fileIdxB) + (rankIdxB - 1)
+            ];
+            
+            let destroyedSomething = false;
+            blastRadius.forEach(targetSq => {
+                if(targetSq.charCodeAt(0) >= 97 && targetSq.charCodeAt(0) <= 104 && parseInt(targetSq[1],10) >= 1 && parseInt(targetSq[1],10) <= 8) {
+                    const tp = temp.get(targetSq);
+                    if (tp && tp.type !== "k") {
+                        temp.remove(targetSq);
+                        destroyedSomething = true;
+                    }
+                }
+            });
+            if(destroyedSomething) nextFen = temp.fen();
             break;
 
         case "any": {
@@ -955,7 +999,7 @@ function processSpellClick(sq) {
                 const fDist = Math.abs(source.charCodeAt(0) - sq.charCodeAt(0));
                 const rDist = Math.abs(parseInt(source[1], 10) - parseInt(sq[1], 10));
 
-                if (activeSpell.id === "accio" && (fDist > 2 || rDist > 2)) return;
+                if (activeSpell.id === "portkey" && p) return; // Must be empty square
                 if (activeSpell.id === "leviosa" && ((fDist > 1 || rDist > 1) || p)) return;
                 if (activeSpell.id === "alohomora") {
                     const ownHalf = myColor === "w" ? parseInt(sq[1], 10) <= 4 : parseInt(sq[1], 10) >= 5;
@@ -1020,17 +1064,45 @@ function joinGame() {
     localStorage.setItem("wizard_chess_name", playerName);
     pendingJoin = true;
     socket.emit("join_room", { room, player_id: playerId, player_name: playerName });
+
+    // Update lobby UI to waiting state
+    document.getElementById("lobby-content").innerHTML = `
+        <div class="py-4">
+            <div class="inline-block mb-4">
+                <svg class="animate-spin h-10 w-10 text-[var(--gold)] mx-auto" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+            </div>
+            <h2 class="text-xl font-bold mb-2 text-white">Waiting for Opponent...</h2>
+            <p class="text-sm text-[var(--muted)]">Send this link to a friend to begin.</p>
+            <div class="flex gap-2 mt-5 max-w-[300px] mx-auto">
+                <input type="text" id="share-link-waiting" readonly value="${location.href}" class="w-full bg-black border border-[var(--line)] text-[var(--muted)] p-2 rounded-lg text-xs font-mono focus:outline-none">
+                <button onclick="copyWaitingLink()" class="bg-[var(--gold)] hover:bg-yellow-400 text-black font-extrabold px-3 rounded-lg text-sm transition shadow-lg">
+                    <i class="fa-solid fa-copy"></i>
+                </button>
+            </div>
+        </div>
+    `;
 }
 
-document.getElementById("join-btn").onclick = joinGame;
-document.getElementById("name-input").addEventListener("keydown", (e) => {
+window.copyWaitingLink = async () => {
+    const input = document.getElementById("share-link-waiting");
+    input.select();
+    try { await navigator.clipboard.writeText(input.value); } catch (e) {}
+}
+
+document.getElementById("join-btn")?.addEventListener("click", joinGame);
+document.getElementById("name-input")?.addEventListener("keydown", (e) => {
     if (e.key === "Enter") joinGame();
 });
 
 socket.on("connect", () => {
-    document.getElementById("share-link").value = location.href;
+    if(document.getElementById("share-link")) {
+        document.getElementById("share-link").value = location.href;
+    }
     const saved = localStorage.getItem("wizard_chess_name");
-    if (saved) {
+    if (saved && document.getElementById("name-input")) {
         document.getElementById("name-input").value = saved;
     }
     if (!pendingJoin) {
@@ -1082,19 +1154,22 @@ socket.on("room_state", (state) => {
     updateUI();
 });
 
+socket.on("sync_spells", (data) => {
+    if (myColor && data.used[myColor]) {
+        usedSpells = new Set(data.used[myColor]);
+        updateUI();
+    }
+});
+
 socket.on("board_update", (data) => {
     const isMyNormalMove = (data.color === myColor && !data.is_spell);
 
     if (!isMyNormalMove) {
         if (data.fen) game.load(data.fen);
         
-        // Log the text
-        if (data.san) setMoveLogFromSan(data.san, data.color, !!data.is_spell);
-        
-        // Visually update the UI first
-        updateUI();
+        // Ensure visual DOM update occurs slightly before audio
+        updateUI(); 
 
-        // Let the CSS layout apply before triggering sound
         requestAnimationFrame(() => {
             setTimeout(() => {
                 if (data.is_spell) {
@@ -1103,11 +1178,16 @@ socket.on("board_update", (data) => {
                     if ((data.san || "").includes("x")) sounds.capture.play().catch(() => {});
                     else sounds.move.play().catch(() => {});
                 }
-            }, 50); // slight pause ensures transition begins
+            }, 30);
         });
+        
+        if (data.san) {
+            setMoveLogFromSan(data.san, data.color, !!data.is_spell);
+        }
     } else {
-        // Validation check for optimistic moves
-        if (data.fen && game.fen() !== data.fen) game.load(data.fen);
+        if (data.fen && game.fen() !== data.fen) {
+            game.load(data.fen);
+        }
         updateUI();
     }
 
@@ -1135,7 +1215,8 @@ buildBoardDOM();
 updateUI();
 
 if (playerName) {
-    document.getElementById("name-input").value = playerName;
+    const nInput = document.getElementById("name-input");
+    if(nInput) nInput.value = playerName;
 }
 </script>
 </body>
