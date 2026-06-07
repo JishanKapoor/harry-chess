@@ -1,3 +1,4 @@
+
 import os
 import random
 from flask import Flask, render_template_string, request
@@ -46,12 +47,11 @@ def fen_side_to_move(fen: str) -> str:
 
 def get_room(room_id: str):
     if room_id not in ROOMS:
-        shuffled_pool = random.sample(SPELLS_POOL, 10)
+        shuffled_pool = random.sample(SPELLS_POOL, len(SPELLS_POOL))
         hand_w = shuffled_pool[0:5] + [TIME_TURNER]
         hand_b = shuffled_pool[5:10] + [TIME_TURNER]
         random.shuffle(hand_w)
         random.shuffle(hand_b)
-
         ROOMS[room_id] = {
             "fen": START_FEN,
             "turn": "w",
@@ -175,7 +175,7 @@ def handle_spell_effect(data):
     color = player_color(room, player_id)
     if color is None or room["turn"] != color:
         return
-        
+
     if spell_id in room["used"][color]:
         return
 
@@ -183,11 +183,10 @@ def handle_spell_effect(data):
 
     if spell_id == "time":
         if len(room["history"]) < 2:
-            return 
+            return
         room["history"].pop()
         fen = room["history"][-1]
-        
-        room["turn"] = fen_side_to_move(fen) 
+        room["turn"] = fen_side_to_move(fen)
         log_text = "TIME-TURNER (Reversed Action)"
     else:
         if not fen:
@@ -195,27 +194,25 @@ def handle_spell_effect(data):
 
         if spell_id == "expelliarmus":
             opp = "b" if color == "w" else "w"
-            if room["hands"].get(opp):
-                available = [s for s in room["hands"][opp] if s["id"] not in room["used"][opp]]
-                if available:
-                    removed = random.choice(available)
-                    room["used"][opp].add(removed["id"])
-                    log_text = f"EXPELLIARMUS (Disarmed {removed['name']})"
-                else:
-                    log_text = "EXPELLIARMUS (Nothing to disarm)"
+            available = [s for s in room["hands"].get(opp, []) if s["id"] not in room["used"][opp]]
+            if available:
+                removed = random.choice(available)
+                room["used"][opp].add(removed["id"])
+                log_text = f"EXPELLIARMUS (Disarmed {removed['name']})"
+            else:
+                log_text = "EXPELLIARMUS (Nothing to disarm)"
 
         next_turn = "b" if color == "w" else "w"
         room["turn"] = next_turn
-
         parts = fen.split(" ")
         if len(parts) > 1:
             parts[1] = next_turn
         if len(parts) > 3:
-            parts[3] = "-"  
+            parts[3] = "-"
         if color == "b" and len(parts) > 5:
             try:
                 parts[5] = str(int(parts[5]) + 1)
-            except:
+            except Exception:
                 pass
         fen = " ".join(parts)
 
@@ -227,7 +224,7 @@ def handle_spell_effect(data):
         "spell_id": spell_id,
         "log": log_text,
     }
-    
+
     if spell_id != "time":
         room["history"].append(fen)
 
@@ -242,12 +239,7 @@ def handle_spell_effect(data):
         "room_state": room_snapshot(room_id),
     }, to=room_id)
 
-    emit("sync_spells", {
-        "used": {
-            "w": list(room["used"]["w"]),
-            "b": list(room["used"]["b"])
-        }
-    }, to=room_id)
+    emit("sync_spells", {"used": {"w": list(room["used"]["w"]), "b": list(room["used"]["b"])}}, to=room_id)
 
 @socketio.on("resign")
 def handle_resign(data):
@@ -280,6 +272,10 @@ HTML_PAYLOAD = r'''
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Wizard's Chess</title>
+    <link rel="preload" as="image" href="https://images6.alphacoders.com/130/thumb-1920-1305167.jpg">
+    <style>
+        html, body { margin: 0; background: #000; }
+    </style>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.js"></script>
@@ -299,38 +295,24 @@ HTML_PAYLOAD = r'''
         }
 
         * { box-sizing: border-box; }
-        
-        # body {
-        #     margin: 0;
-        #     font-family: 'Inter', sans-serif;
-        #     background: var(--bg);
-        #     color: #fff;
-        #     min-height: 100vh;
-        # }
+
         body {
-    margin: 0;
-    font-family: 'Inter', sans-serif;
-    color: #fff;
-    min-height: 100vh;
-
-    background:
-        linear-gradient(
-            rgba(0,0,0,0.65),
-            rgba(0,0,0,0.75)
-        ),
-        url("https://images6.alphacoders.com/130/thumb-1920-1305167.jpg");
-
-    background-size: cover;
-    background-position: center;
-    background-repeat: no-repeat;
-    background-attachment: fixed;
-}
+            margin: 0;
+            font-family: 'Inter', sans-serif;
+            color: #fff;
+            min-height: 100vh;
+            background:
+                linear-gradient(rgba(0,0,0,0.58), rgba(0,0,0,0.72)),
+                url("https://images6.alphacoders.com/130/thumb-1920-1305167.jpg");
+            background-size: cover;
+            background-position: center center;
+            background-repeat: no-repeat;
+            background-attachment: fixed;
+        }
 
         ::-webkit-scrollbar { width: 8px; height: 8px; }
         ::-webkit-scrollbar-track { background: var(--bg); }
         ::-webkit-scrollbar-thumb { background: #4a3b5c; border-radius: 999px; }
-
-        .text-muted { color: var(--muted); }
 
         .sq-light { background: var(--light); }
         .sq-dark { background: var(--dark); }
@@ -341,19 +323,14 @@ HTML_PAYLOAD = r'''
             position: relative;
             border-radius: 8px;
             overflow: hidden;
-            border: 4px solid var(--panel);
+            border: 4px solid rgba(255,255,255,0.08);
             box-shadow: 0 25px 60px rgba(0, 0, 0, 0.6);
             transition: transform 0.18s ease;
             background: #000;
         }
 
-        .board-shell.flipped #board {
-            transform: rotate(180deg);
-        }
-        
-        .board-shell.flipped .piece {
-            transform: rotate(180deg);
-        }
+        .board-shell.flipped #board { transform: rotate(180deg); }
+        .board-shell.flipped .piece { transform: rotate(180deg); }
 
         .square {
             position: relative;
@@ -377,10 +354,6 @@ HTML_PAYLOAD = r'''
             -webkit-user-drag: none;
         }
 
-        .board-shell.flipped .piece {
-            transform: rotate(180deg);
-        }
-
         .wP { background-image: url('https://images.chesscomfiles.com/chess-themes/pieces/neo/150/wp.png'); }
         .wN { background-image: url('https://images.chesscomfiles.com/chess-themes/pieces/neo/150/wn.png'); }
         .wB { background-image: url('https://images.chesscomfiles.com/chess-themes/pieces/neo/150/wb.png'); }
@@ -394,19 +367,8 @@ HTML_PAYLOAD = r'''
         .bQ { background-image: url('https://images.chesscomfiles.com/chess-themes/pieces/neo/150/bq.png'); }
         .bK { background-image: url('https://images.chesscomfiles.com/chess-themes/pieces/neo/150/bk.png'); }
 
-        .sq-selected {
-            position: absolute;
-            inset: 0;
-            background: rgba(20, 85, 30, 0.5);
-            pointer-events: none;
-        }
-
-        .sq-highlight {
-            position: absolute;
-            inset: 0;
-            background: rgba(255, 255, 51, 0.35);
-            pointer-events: none;
-        }
+        .sq-selected { position:absolute; inset:0; background: rgba(20,85,30,0.5); pointer-events:none; }
+        .sq-highlight { position:absolute; inset:0; background: rgba(255,255,51,0.35); pointer-events:none; }
 
         .move-dot {
             width: 32%;
@@ -428,13 +390,13 @@ HTML_PAYLOAD = r'''
         }
 
         .grimoire-container {
-            background-color: var(--panel-2);
+            background-color: rgba(31, 30, 27, 0.95);
             border-left: 1px solid var(--line);
             box-shadow: -10px 0 30px rgba(0,0,0,0.6);
         }
 
         .spell-card {
-            background: var(--panel);
+            background: rgba(38, 36, 33, 0.96);
             border: 2px solid var(--line);
             position: relative;
             overflow: hidden;
@@ -459,7 +421,7 @@ HTML_PAYLOAD = r'''
         .spell-card.used {
             opacity: 0.3;
             filter: grayscale(1) brightness(0.6);
-            pointer-events: none; 
+            pointer-events: none;
         }
 
         .overlay {
@@ -478,10 +440,6 @@ HTML_PAYLOAD = r'''
             width: 100%;
         }
 
-        .shell-left {
-            min-height: 0;
-        }
-
         .board-holder {
             width: 100%;
             max-width: min(100%, 85vh);
@@ -492,11 +450,33 @@ HTML_PAYLOAD = r'''
             background: rgba(0,0,0,0.2);
             color: #d1c5e0;
         }
+
+        .music-btn {
+            position: fixed;
+            right: 16px;
+            bottom: 16px;
+            z-index: 9999;
+            border: 1px solid rgba(212,175,55,0.55);
+            background: linear-gradient(180deg, rgba(212,175,55,0.95), rgba(159,128,20,0.95));
+            color: #0b0b0b;
+            font-weight: 800;
+            padding: 12px 16px;
+            border-radius: 14px;
+            box-shadow: 0 12px 30px rgba(0,0,0,0.45);
+            cursor: pointer;
+        }
+
+        .music-btn:hover { filter: brightness(1.05); }
     </style>
 </head>
 <body>
+<audio id="bgMusic" loop preload="auto">
+    <source src="https://raw.githubusercontent.com/JishanKapoor/harry-chess/main/YTDown_YouTube_Willow-Weep-For-Me-2018-Stereo-Mix_Media_NJYzpNHJ2mY_009_128k.mp3" type="audio/mpeg">
+</audio>
+<button id="music-toggle" class="music-btn">♫ Music Off</button>
+
 <div class="game-root flex flex-col lg:flex-row">
-    <div class="flex-1 flex flex-col justify-center p-2 lg:p-4 shell-left">
+    <div class="flex-1 flex flex-col justify-center p-2 lg:p-4">
         <div class="board-holder space-y-2 lg:space-y-3">
             <div class="flex justify-between items-center px-2">
                 <div class="flex items-center gap-3 min-w-0">
@@ -556,7 +536,6 @@ HTML_PAYLOAD = r'''
         </div>
     </div>
 
-    <!-- Responsive Grimoire Panel for scrolling -->
     <div class="w-full lg:w-[420px] xl:w-[460px] grimoire-container flex flex-col z-10 lg:h-screen lg:overflow-y-auto lg:sticky top-0 pb-6 lg:pb-0">
         <div class="p-5 border-b border-[var(--line)] bg-[var(--panel)] sticky top-0 z-20 flex justify-between items-center shadow-md">
             <h3 class="font-bold text-sm text-white uppercase tracking-widest flex items-center" style="font-family: 'Cinzel', serif;">
@@ -564,10 +543,8 @@ HTML_PAYLOAD = r'''
             </h3>
             <div id="turn-indicator" class="text-[10px] font-bold px-2 py-1 rounded bg-[var(--bg)] text-[var(--muted)] border border-[var(--line)]">WAITING</div>
         </div>
-        
-        <div id="spells-container" class="grid grid-cols-2 gap-3 p-4">
-            <!-- Spells injected here via JS -->
-        </div>
+
+        <div id="spells-container" class="grid grid-cols-2 gap-3 p-4"></div>
 
         <div class="px-5 py-3 mt-auto border-t border-[var(--line)] flex justify-between items-center bg-[var(--panel)]">
             <span class="font-bold text-xs text-[var(--muted)] uppercase tracking-widest"><i class="fa-solid fa-list-ul mr-2"></i>Match Log</span>
@@ -581,6 +558,7 @@ HTML_PAYLOAD = r'''
 
 <script>
 const socket = io();
+const game = new Chess();
 
 let playerId = localStorage.getItem("wizard_chess_id");
 if (!playerId) {
@@ -598,7 +576,6 @@ const room = (() => {
     return r;
 })();
 
-const game = new Chess();
 let myColor = null;
 let myHand = [];
 let usedSpells = new Set();
@@ -610,12 +587,49 @@ let moveNum = 1;
 let playerName = localStorage.getItem("wizard_chess_name") || "";
 let pendingJoin = false;
 
+const bgMusic = document.getElementById("bgMusic");
+const musicToggle = document.getElementById("music-toggle");
+let musicEnabled = false;
+
 const sounds = {
     move: new Audio("https://images.chesscomfiles.com/chess-themes/sounds/_MP3_/default/move-self.mp3"),
     capture: new Audio("https://images.chesscomfiles.com/chess-themes/sounds/_MP3_/default/capture.mp3"),
     spell: new Audio("https://images.chesscomfiles.com/chess-themes/sounds/_MP3_/default/promote.mp3"),
     start: new Audio("https://images.chesscomfiles.com/chess-themes/sounds/_MP3_/default/game-start.mp3"),
 };
+
+function setMusicButton() {
+    musicToggle.textContent = bgMusic.paused ? "♫ Music Off" : "♫ Music On";
+}
+
+async function startMusic() {
+    if (!bgMusic.paused) {
+        musicEnabled = true;
+        setMusicButton();
+        return;
+    }
+    try {
+        bgMusic.volume = 0.25;
+        await bgMusic.play();
+        musicEnabled = true;
+    } catch (e) {
+        musicEnabled = false;
+    }
+    setMusicButton();
+}
+
+function toggleMusic() {
+    if (bgMusic.paused) {
+        startMusic();
+    } else {
+        bgMusic.pause();
+        musicEnabled = false;
+        setMusicButton();
+    }
+}
+
+musicToggle.addEventListener("click", toggleMusic);
+setMusicButton();
 
 function buildBoardDOM() {
     const boardEl = document.getElementById("board");
@@ -657,10 +671,6 @@ function setBoardOrientation() {
     document.getElementById("board-shell").classList.toggle("flipped", myColor === "b");
 }
 
-function isMyTurn() {
-    return myColor && myColor !== "s" && gameReady && game.turn() === myColor && document.getElementById("game-over-overlay").classList.contains("hidden");
-}
-
 function setMoveLogFromSan(text, color, isSpell = false) {
     const history = document.getElementById("move-history");
     const safeText = (text || "").toString();
@@ -692,7 +702,6 @@ function setMoveLogFromSan(text, color, isSpell = false) {
         }
         moveNum += 1;
     }
-
     history.scrollTop = history.scrollHeight;
 }
 
@@ -789,10 +798,10 @@ function updateUI() {
             turnIndicator.className = `text-[10px] font-bold px-2 py-1 rounded shadow border ${isMy ? "bg-[var(--green)] text-white border-transparent" : "bg-[var(--bg)] text-[var(--muted)] border-[var(--line)]"}`;
             turnIndicator.onclick = null;
         }
-        
+
         myStatus.innerText = isMy ? "Thinking" : "Waiting";
         myStatus.className = `text-xs font-mono font-bold px-3 py-2 rounded shadow-lg ${isMy ? "bg-[var(--green)] text-white" : "bg-[var(--bg)] text-[var(--muted)] border border-[var(--line)]"}`;
-        
+
         oppStatus.innerText = !isMy ? "Thinking" : "Waiting";
         oppStatus.className = `text-xs font-mono font-bold px-3 py-2 rounded shadow border ${!isMy ? "bg-[var(--green)] text-white border-transparent" : "bg-[var(--bg)] text-[var(--muted)] border-[var(--line)]"}`;
     }
@@ -820,7 +829,7 @@ function updateUI() {
 
             card.onclick = () => {
                 if (isUsed || !gameReady || game.turn() !== myColor) return;
-                
+
                 if (isActive) {
                     cancelSpell();
                     return;
@@ -881,12 +890,12 @@ function handleSquareClick(sq) {
         const move = temp.move({ from: selectedSquare, to: sq, promotion: "q" });
         if (move) {
             const san = move.san;
-            
+
             game.move({ from: selectedSquare, to: sq, promotion: "q" });
             if (san.includes("x")) sounds.capture.play().catch(()=>{});
             else sounds.move.play().catch(()=>{});
             setMoveLogFromSan(san, myColor, false);
-            
+
             socket.emit("standard_move", {
                 room,
                 player_id: playerId,
@@ -899,6 +908,13 @@ function handleSquareClick(sq) {
         selectedSquare = null;
         updateUI();
     }
+}
+
+function switchTurnInFen(fen) {
+    const parts = fen.split(" ");
+    if (parts.length > 1) parts[1] = parts[1] === "w" ? "b" : "w";
+    if (parts.length > 3) parts[3] = "-";
+    return parts.join(" ");
 }
 
 function processSpellClick(sq) {
@@ -919,47 +935,47 @@ function processSpellClick(sq) {
                 nextFen = temp.fen();
             }
             break;
-            
+
         case "bombarda":
-            const fileIdxB = sq.charCodeAt(0);
-            const rankIdxB = parseInt(sq[1], 10);
-            const blastRadius = [
-                sq,
-                String.fromCharCode(fileIdxB + 1) + rankIdxB,
-                String.fromCharCode(fileIdxB - 1) + rankIdxB,
-                String.fromCharCode(fileIdxB) + (rankIdxB + 1),
-                String.fromCharCode(fileIdxB) + (rankIdxB - 1)
-            ];
-            
-            let destroyedSomething = false;
-            blastRadius.forEach(targetSq => {
-                if(targetSq.charCodeAt(0) >= 97 && targetSq.charCodeAt(0) <= 104 && parseInt(targetSq[1],10) >= 1 && parseInt(targetSq[1],10) <= 8) {
-                    const tp = temp.get(targetSq);
-                    if (tp && tp.type !== "k") {
-                        temp.remove(targetSq);
-                        destroyedSomething = true;
+            {
+                const fileIdxB = sq.charCodeAt(0);
+                const rankIdxB = parseInt(sq[1], 10);
+                const blastRadius = [
+                    sq,
+                    String.fromCharCode(fileIdxB + 1) + rankIdxB,
+                    String.fromCharCode(fileIdxB - 1) + rankIdxB,
+                    String.fromCharCode(fileIdxB) + (rankIdxB + 1),
+                    String.fromCharCode(fileIdxB) + (rankIdxB - 1)
+                ];
+                let destroyedSomething = false;
+                blastRadius.forEach(targetSq => {
+                    if (targetSq.charCodeAt(0) >= 97 && targetSq.charCodeAt(0) <= 104 && parseInt(targetSq[1],10) >= 1 && parseInt(targetSq[1],10) <= 8) {
+                        const tp = temp.get(targetSq);
+                        if (tp && tp.type !== "k") {
+                            temp.remove(targetSq);
+                            destroyedSomething = true;
+                        }
                     }
-                }
-            });
-            if(destroyedSomething) nextFen = temp.fen();
+                });
+                if (destroyedSomething) nextFen = temp.fen();
+            }
             break;
 
-        case "any": {
-            const fileIdx = sq.charCodeAt(0);
-            const rankIdx = parseInt(sq[1], 10);
-            for (let f = fileIdx - 1; f <= fileIdx + 1; f++) {
-                for (let r = rankIdx - 1; r <= rankIdx + 1; r++) {
-                    if (f < 97 || f > 104 || r < 1 || r > 8) continue;
-                    const targetSq = String.fromCharCode(f) + r;
-                    const targetPiece = temp.get(targetSq);
-                    if (targetPiece && targetPiece.type !== "k") {
-                        temp.remove(targetSq);
+        case "any":
+            {
+                const fileIdx = sq.charCodeAt(0);
+                const rankIdx = parseInt(sq[1], 10);
+                for (let f = fileIdx - 1; f <= fileIdx + 1; f++) {
+                    for (let r = rankIdx - 1; r <= rankIdx + 1; r++) {
+                        if (f < 97 || f > 104 || r < 1 || r > 8) continue;
+                        const targetSq = String.fromCharCode(f) + r;
+                        const targetPiece = temp.get(targetSq);
+                        if (targetPiece && targetPiece.type !== "k") temp.remove(targetSq);
                     }
                 }
+                nextFen = temp.fen();
             }
-            nextFen = temp.fen();
             break;
-        }
 
         case "own_pawn":
             if (p && p.color === myColor && p.type === "p") {
@@ -983,7 +999,7 @@ function processSpellClick(sq) {
                 const fDist = Math.abs(source.charCodeAt(0) - sq.charCodeAt(0));
                 const rDist = Math.abs(parseInt(source[1], 10) - parseInt(sq[1], 10));
 
-                if (activeSpell.id === "portkey" && p) return; 
+                if (activeSpell.id === "portkey" && p) return;
                 if (activeSpell.id === "leviosa" && ((fDist > 1 || rDist > 1) || p)) return;
                 if (activeSpell.id === "alohomora") {
                     const ownHalf = myColor === "w" ? parseInt(sq[1], 10) <= 4 : parseInt(sq[1], 10) >= 5;
@@ -1025,19 +1041,12 @@ function processSpellClick(sq) {
     }
 }
 
-function switchTurnInFen(fen) {
-    const parts = fen.split(" ");
-    if (parts.length > 1) parts[1] = parts[1] === "w" ? "b" : "w";
-    if (parts.length > 3) parts[3] = "-";
-    return parts.join(" ");
-}
-
 document.getElementById("resign-btn").onclick = () => {
     if (!gameReady || !myColor || myColor === "s") return;
     socket.emit("resign", { room, player_id: playerId });
 };
 
-function joinGame() {
+async function joinGame() {
     const nameInput = document.getElementById("name-input");
     const name = (nameInput.value || "").trim().slice(0, 24);
     if (!name) {
@@ -1048,8 +1057,8 @@ function joinGame() {
     localStorage.setItem("wizard_chess_name", playerName);
     pendingJoin = true;
     socket.emit("join_room", { room, player_id: playerId, player_name: playerName });
+    await startMusic();
 
-    // Instantly update UI to waiting state
     document.getElementById("lobby-content").innerHTML = `
         <div class="py-4">
             <div class="inline-block mb-4">
@@ -1068,13 +1077,14 @@ function joinGame() {
             </div>
         </div>
     `;
+    setMusicButton();
 }
 
 window.copyWaitingLink = async () => {
     const input = document.getElementById("share-link-waiting");
     input.select();
     try { await navigator.clipboard.writeText(input.value); } catch (e) {}
-}
+};
 
 document.getElementById("join-btn")?.addEventListener("click", joinGame);
 document.getElementById("name-input")?.addEventListener("keydown", (e) => {
@@ -1082,15 +1092,6 @@ document.getElementById("name-input")?.addEventListener("keydown", (e) => {
 });
 
 socket.on("connect", () => {
-    if(document.getElementById("share-link")) {
-        document.getElementById("share-link").value = location.href;
-        
-        document.getElementById("copy-btn").onclick = async () => {
-            const input = document.getElementById("share-link");
-            input.select();
-            try { await navigator.clipboard.writeText(input.value); } catch (e) {}
-        };
-    }
     const saved = localStorage.getItem("wizard_chess_name");
     if (saved && document.getElementById("name-input")) {
         document.getElementById("name-input").value = saved;
@@ -1156,20 +1157,16 @@ socket.on("board_update", (data) => {
 
     if (!isMyNormalMove) {
         if (data.fen) game.load(data.fen);
-        
-        updateUI(); 
+        updateUI();
 
         requestAnimationFrame(() => {
             setTimeout(() => {
-                if (data.is_spell) {
-                    sounds.spell.play().catch(() => {});
-                } else {
-                    if ((data.san || "").includes("x")) sounds.capture.play().catch(() => {});
-                    else sounds.move.play().catch(() => {});
-                }
+                if (data.is_spell) sounds.spell.play().catch(() => {});
+                else if ((data.san || "").includes("x")) sounds.capture.play().catch(() => {});
+                else sounds.move.play().catch(() => {});
             }, 30);
         });
-        
+
         if (data.san) {
             setMoveLogFromSan(data.san, data.color, !!data.is_spell);
         }
@@ -1205,7 +1202,7 @@ updateUI();
 
 if (playerName) {
     const nInput = document.getElementById("name-input");
-    if(nInput) nInput.value = playerName;
+    if (nInput) nInput.value = playerName;
 }
 </script>
 </body>
