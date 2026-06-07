@@ -4,36 +4,24 @@ from flask import Flask, render_template_string, request
 from flask_socketio import SocketIO, join_room, emit
 
 app = Flask(__name__)
-app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "wizard_chess_secret_v5")
+app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "wizard_chess_secret_v3")
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode="threading")
 
 START_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
 
-SVG_TIME = '''<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"><circle cx="50" cy="50" r="45" fill="none" stroke="#eab308" stroke-width="3" stroke-dasharray="10 5"/><circle cx="50" cy="50" r="38" fill="none" stroke="#eab308" stroke-width="2"/><path d="M40 30 L60 30 L50 50 Z" fill="#fef08a"/><path d="M40 70 L60 70 L50 50 Z" fill="#ca8a04"/><path d="M35 25 L65 25 M35 75 L65 75" stroke="#eab308" stroke-width="4" stroke-linecap="round"/><circle cx="50" cy="50" r="8" fill="#fef08a"/></svg>'''
-SVG_AVADA = '''<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"><circle cx="50" cy="50" r="40" fill="none" stroke="#22c55e" stroke-width="4" stroke-dasharray="4 8" filter="drop-shadow(0 0 10px #22c55e)"/><path d="M60 15 L35 50 L55 55 L40 85 L75 45 L50 40 Z" fill="#4ade80" filter="drop-shadow(0 0 15px #22c55e)"/></svg>'''
-SVG_IMPERIO = '''<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"><path d="M10 50 Q50 10 90 50 Q50 90 10 50 Z" fill="none" stroke="#ec4899" stroke-width="4"/><circle cx="50" cy="50" r="18" fill="#f472b6" filter="drop-shadow(0 0 12px #ec4899)"/><circle cx="50" cy="50" r="6" fill="#831843"/><path d="M50 68 L35 100 M50 68 L50 100 M50 68 L65 100" stroke="#fbcfe8" stroke-width="2" stroke-dasharray="4 4"/></svg>'''
-SVG_SECTUM = '''<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"><path d="M20 20 L80 80 M30 10 L90 70 M10 30 L70 90" stroke="#d1d5db" stroke-width="4" stroke-linecap="round"/><path d="M50 50 Q60 70 50 80 Q40 70 50 50 Z" fill="#ef4444" filter="drop-shadow(0 0 5px #ef4444)"/><circle cx="70" cy="40" r="4" fill="#ef4444"/><circle cx="30" cy="70" r="3" fill="#ef4444"/></svg>'''
-SVG_FIENDFYRE = '''<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"><path d="M50 95 C20 95 25 60 40 40 C35 30 25 25 30 15 C45 25 45 40 50 30 C55 40 55 25 70 15 C75 25 65 30 60 40 C75 60 80 95 50 95 Z" fill="#ea580c" filter="drop-shadow(0 0 8px #f97316)"/><path d="M50 85 C35 85 38 65 45 50 C48 40 52 40 55 50 C62 65 65 85 50 85 Z" fill="#fb923c"/><circle cx="42" cy="65" r="3" fill="#7c2d12"/><circle cx="58" cy="65" r="3" fill="#7c2d12"/></svg>'''
-SVG_PORTKEY = '''<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"><ellipse cx="50" cy="75" rx="35" ry="10" fill="none" stroke="#3b82f6" stroke-width="3" stroke-dasharray="8 4" filter="drop-shadow(0 0 10px #60a5fa)"/><path d="M60 75 L40 75 C30 75 25 65 30 55 L40 45 L40 25 C40 15 50 15 55 15 C60 15 65 20 65 25 L60 45 L70 55 C75 65 70 75 60 75 Z" fill="#78350f" stroke="#451a03" stroke-width="4"/><path d="M40 45 L50 55 L60 45" stroke="#451a03" stroke-width="3" fill="none"/><circle cx="55" cy="25" r="3" fill="#451a03"/></svg>'''
-SVG_EXPELLIARMUS = '''<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"><path d="M20 80 L80 20" stroke="#78350f" stroke-width="8" stroke-linecap="round"/><path d="M70 30 L80 20" stroke="#fbbf24" stroke-width="8" stroke-linecap="round"/><circle cx="80" cy="20" r="12" fill="none" stroke="#ef4444" stroke-width="3" filter="drop-shadow(0 0 8px #ef4444)"/><path d="M80 5 L80 15 M80 25 L80 35 M65 20 L75 20 M85 20 L95 20 M70 10 L75 15 M85 25 L90 30 M70 30 L75 25 M85 10 L90 15" stroke="#ef4444" stroke-width="3" stroke-linecap="round"/></svg>'''
-SVG_PROTEGO = '''<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"><path d="M50 10 L90 30 L90 60 Q90 90 50 95 Q10 90 10 60 L10 30 Z" fill="none" stroke="#3b82f6" stroke-width="6" filter="drop-shadow(0 0 10px #60a5fa)"/><path d="M50 20 L80 35 L80 55 Q80 80 50 85 Q20 80 20 55 L20 35 Z" fill="#1e3a8a" opacity="0.6"/><path d="M30 30 L70 70 M30 70 L70 30" stroke="#60a5fa" stroke-width="2" opacity="0.5"/></svg>'''
-SVG_ALOHOMORA = '''<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"><circle cx="30" cy="50" r="15" fill="none" stroke="#eab308" stroke-width="6" filter="drop-shadow(0 0 6px #facc15)"/><path d="M45 50 L85 50 M75 50 L75 65 M65 50 L65 65" stroke="#eab308" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/><circle cx="30" cy="50" r="5" fill="#ca8a04"/></svg>'''
-SVG_LEVIOSA = '''<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"><path d="M20 80 Q10 50 40 40 Q50 20 80 20 Q70 50 60 60 Q40 90 20 80 Z" fill="#f3f4f6" stroke="#9ca3af" stroke-width="2" filter="drop-shadow(0 0 10px #ffffff)"/><path d="M20 80 Q40 70 80 20" stroke="#d1d5db" stroke-width="2" fill="none"/><path d="M20 90 Q50 100 80 90" stroke="#e5e7eb" stroke-width="3" stroke-dasharray="5 5" fill="none"/></svg>'''
-SVG_BOMBARDA = '''<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"><path d="M50 10 L60 35 L85 30 L70 50 L90 70 L65 65 L50 90 L35 65 L10 70 L30 50 L15 30 L40 35 Z" fill="#ef4444" filter="drop-shadow(0 0 12px #dc2626)"/><path d="M50 25 L55 40 L70 40 L60 50 L65 65 L50 55 L35 65 L40 50 L30 40 L45 40 Z" fill="#facc15"/><circle cx="50" cy="50" r="8" fill="#ffffff" filter="drop-shadow(0 0 5px #fff)"/></svg>'''
-
-TIME_TURNER = {"id": "time", "name": "Time-Turner", "type": "instant", "desc": "Rewind the board to before opponent's last move.", "color": "#eab308", "image": SVG_TIME}
-
-SPELLS_POOL = [
-    {"id": "avada", "name": "Avada Kedavra", "type": "enemy", "desc": "Click an enemy piece to destroy it.", "color": "#22c55e", "image": SVG_AVADA},
-    {"id": "imperio", "name": "Imperio", "type": "drag_enemy", "desc": "Move an enemy piece as your own.", "color": "#ec4899", "image": SVG_IMPERIO},
-    {"id": "sectum", "name": "Sectumsempra", "type": "enemy", "desc": "Demote an enemy piece to a Pawn.", "color": "#ef4444", "image": SVG_SECTUM},
-    {"id": "fiendfyre", "name": "Fiendfyre", "type": "any", "desc": "Destroy a 3x3 square area completely.", "color": "#f97316", "image": SVG_FIENDFYRE},
-    {"id": "portkey", "name": "Portkey", "type": "drag_own", "desc": "Teleport your piece to ANY empty square.", "color": "#3b82f6", "image": SVG_PORTKEY},
-    {"id": "expelliarmus", "name": "Expelliarmus", "type": "instant", "desc": "Disarm: Destroy a random spell from opponent.", "color": "#ef4444", "image": SVG_EXPELLIARMUS},
-    {"id": "protego", "name": "Protego", "type": "own_pawn", "desc": "Promote your Pawn to a Knight instantly.", "color": "#60a5fa", "image": SVG_PROTEGO},
-    {"id": "alohomora", "name": "Alohomora", "type": "drag_own", "desc": "Teleport your piece to any empty square on your half.", "color": "#eab308", "image": SVG_ALOHOMORA},
-    {"id": "leviosa", "name": "Leviosa", "type": "drag_own", "desc": "Float your piece to an adjacent empty square.", "color": "#f3f4f6", "image": SVG_LEVIOSA},
-    {"id": "bombarda", "name": "Bombarda", "type": "bombarda", "desc": "Explode a cross-shaped area (+).", "color": "#dc2626", "image": SVG_BOMBARDA},
+# The pool of exactly 11 spells (1 Time-Turner + 10 others to be split 5/5)
+SPELLS = [
+    {"id": "avada", "name": "Avada Kedavra", "rarity": "Legendary", "icon": "fa-bolt", "type": "enemy", "desc": "Click an enemy piece to destroy it.", "color": "#f59e0b"},
+    {"id": "time", "name": "Time-Turner", "rarity": "Legendary", "icon": "fa-hourglass-half", "type": "instant", "desc": "Rewind the board one move.", "color": "#8b5cf6"},
+    {"id": "imperio", "name": "Imperio", "rarity": "Rare", "icon": "fa-eye", "type": "drag_enemy", "desc": "Move an enemy piece as your own.", "color": "#14b8a6"},
+    {"id": "sectum", "name": "Sectumsempra", "rarity": "Rare", "icon": "fa-droplet", "type": "enemy", "desc": "Demote an enemy piece to a Pawn.", "color": "#ef4444"},
+    {"id": "fiendfyre", "name": "Fiendfyre", "rarity": "Rare", "icon": "fa-fire", "type": "any", "desc": "Destroy a 3x3 square area.", "color": "#f97316"},
+    {"id": "portkey", "name": "Portkey", "rarity": "Rare", "icon": "fa-shoe-prints", "type": "drag_own", "desc": "Teleport piece to ANY empty square.", "color": "#8b5cf6"},
+    {"id": "bombarda", "name": "Bombarda", "rarity": "Rare", "icon": "fa-burst", "type": "bombarda", "desc": "Explode a cross-shaped area (+).", "color": "#f43f5e"},
+    {"id": "leviosa", "name": "Wingardium Leviosa", "rarity": "Common", "icon": "fa-feather", "type": "drag_own", "desc": "Move to an adjacent empty square.", "color": "#06b6d4"},
+    {"id": "alohomora", "name": "Alohomora", "rarity": "Common", "icon": "fa-key", "type": "drag_own", "desc": "Move to any empty square on your half.", "color": "#84cc16"},
+    {"id": "expelliarmus", "name": "Expelliarmus", "rarity": "Common", "icon": "fa-wand-magic-sparkles", "type": "instant", "desc": "Keep your turn and move again.", "color": "#ec4899"},
+    {"id": "protego", "name": "Protego", "rarity": "Common", "icon": "fa-shield-halved", "type": "own_pawn", "desc": "Promote your Pawn to a Knight.", "color": "#3b82f6"},
 ]
 
 ROOMS = {}
@@ -46,9 +34,15 @@ def fen_side_to_move(fen: str) -> str:
 
 def get_room(room_id: str):
     if room_id not in ROOMS:
-        shuffled_pool = random.sample(SPELLS_POOL, 10)
-        hand_w = shuffled_pool[0:5] + [TIME_TURNER]
-        hand_b = shuffled_pool[5:10] + [TIME_TURNER]
+        # Deal exactly 5 unique spells to each player, plus the Time Turner for both
+        time_turner = next(s for s in SPELLS if s["id"] == "time")
+        pool = [s for s in SPELLS if s["id"] != "time"]
+        random.shuffle(pool)
+        
+        hand_w = pool[0:5] + [time_turner]
+        hand_b = pool[5:10] + [time_turner]
+        
+        # Shuffle their final hands so Time Turner isn't always at the end
         random.shuffle(hand_w)
         random.shuffle(hand_b)
 
@@ -175,59 +169,35 @@ def handle_spell_effect(data):
     color = player_color(room, player_id)
     if color is None or room["turn"] != color:
         return
-        
     if spell_id in room["used"][color]:
         return
 
+    consume_turn = bool(data.get("consume_turn", True))
     log_text = (data.get("log") or spell_id).strip()
 
     if spell_id == "time":
         if len(room["history"]) < 2:
-            return 
+            return
         room["history"].pop()
         fen = room["history"][-1]
-        
-        room["turn"] = fen_side_to_move(fen) 
-        log_text = "TIME-TURNER (Reversed Action)"
-    else:
-        if not fen:
-            return
+        consume_turn = True
 
-        if spell_id == "expelliarmus":
-            opp = "b" if color == "w" else "w"
-            if room["hands"].get(opp):
-                available = [s for s in room["hands"][opp] if s["id"] not in room["used"][opp]]
-                if available:
-                    removed = random.choice(available)
-                    room["used"][opp].add(removed["id"])
-                    log_text = f"EXPELLIARMUS (Disarmed {removed['name']})"
-                else:
-                    log_text = "EXPELLIARMUS (Nothing to disarm)"
+    if spell_id == "expelliarmus":
+        consume_turn = False
 
-        next_turn = "b" if color == "w" else "w"
-        room["turn"] = next_turn
-
-        parts = fen.split(" ")
-        if len(parts) > 1:
-            parts[1] = next_turn
-        if len(parts) > 3:
-            parts[3] = "-"  
-        if color == "b" and len(parts) > 5:
-            try:
-                parts[5] = str(int(parts[5]) + 1)
-            except:
-                pass
-        fen = " ".join(parts)
+    if not fen:
+        return
 
     room["used"][color].add(spell_id)
     room["fen"] = fen
+    if consume_turn:
+        room["turn"] = fen_side_to_move(fen)
     room["last_action"] = {
         "type": "spell",
         "color": color,
         "spell_id": spell_id,
         "log": log_text,
     }
-    
     if spell_id != "time":
         room["history"].append(fen)
 
@@ -240,13 +210,6 @@ def handle_spell_effect(data):
         "is_spell": True,
         "used_spell_id": spell_id,
         "room_state": room_snapshot(room_id),
-    }, to=room_id)
-
-    emit("sync_spells", {
-        "used": {
-            "w": list(room["used"]["w"]),
-            "b": list(room["used"]["b"])
-        }
     }, to=room_id)
 
 @socketio.on("resign")
@@ -273,19 +236,20 @@ def handle_resign(data):
         "room_state": room_snapshot(room_id),
     }, to=room_id)
 
+
 HTML_PAYLOAD = r'''
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <title>Wizard's Chess</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&family=Cinzel:wght@600;800&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap');
 
         :root {
             --bg: #302e2b;
@@ -299,18 +263,18 @@ HTML_PAYLOAD = r'''
         }
 
         * { box-sizing: border-box; }
-        
         body {
             margin: 0;
             font-family: 'Inter', sans-serif;
             background: var(--bg);
             color: #fff;
-            min-height: 100vh;
+            overscroll-behavior: none;
         }
 
-        ::-webkit-scrollbar { width: 8px; height: 8px; }
-        ::-webkit-scrollbar-track { background: var(--bg); }
-        ::-webkit-scrollbar-thumb { background: #4a3b5c; border-radius: 999px; }
+        /* Improved native scrolling for right panel */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: var(--panel); }
+        ::-webkit-scrollbar-thumb { background: #4b4845; border-radius: 999px; }
 
         .text-muted { color: var(--muted); }
 
@@ -324,7 +288,7 @@ HTML_PAYLOAD = r'''
             border-radius: 8px;
             overflow: hidden;
             border: 4px solid var(--panel);
-            box-shadow: 0 25px 60px rgba(0, 0, 0, 0.6);
+            box-shadow: 0 25px 60px rgba(0, 0, 0, 0.45);
             transition: transform 0.18s ease;
             background: #000;
         }
@@ -405,155 +369,154 @@ HTML_PAYLOAD = r'''
             pointer-events: none;
         }
 
-        .grimoire-container {
-            background-color: var(--panel-2);
-            border-left: 1px solid var(--line);
-            box-shadow: -10px 0 30px rgba(0,0,0,0.6);
-        }
-
         .spell-card {
-            background: var(--panel);
-            border: 2px solid var(--line);
             position: relative;
             overflow: hidden;
-            transition: all 0.25s cubic-bezier(0.25, 0.8, 0.25, 1);
-            border-radius: 12px;
+            transition: transform 0.18s ease, box-shadow 0.18s ease, opacity 0.18s ease;
+            background: #161513;
         }
-
-        .spell-card:hover:not(.used) {
-            transform: translateY(-4px) scale(1.02);
-            box-shadow: 0 15px 25px -5px rgba(0,0,0,0.6), 0 0 15px var(--spell-glow);
-            border-color: var(--spell-color);
-            z-index: 10;
-        }
-
         .spell-card.active {
-            transform: translateY(-4px);
-            box-shadow: 0 0 20px var(--spell-glow), inset 0 0 15px var(--spell-glow);
-            border-color: var(--spell-color);
-            z-index: 10;
+            transform: translateY(-3px);
+            box-shadow: 0 0 0 1px rgba(255,255,255,0.1), 0 14px 28px rgba(0,0,0,.3);
         }
-
         .spell-card.used {
             opacity: 0.3;
-            filter: grayscale(1) brightness(0.6);
-            pointer-events: none; 
+            filter: grayscale(1);
+            pointer-events: none;
         }
 
         .overlay {
             position: absolute;
             inset: 0;
-            background: rgba(0,0,0,0.75);
-            backdrop-filter: blur(5px);
+            background: rgba(0,0,0,0.68);
+            backdrop-filter: blur(4px);
             display: flex;
             align-items: center;
             justify-content: center;
             z-index: 50;
         }
 
+        /* Allow scrolling correctly on mobile vs desktop */
         .game-root {
             min-height: 100vh;
-            width: 100%;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        @media (min-width: 1024px) {
+            .game-root {
+                flex-direction: row;
+                height: 100vh;
+                overflow: hidden;
+            }
         }
 
         .shell-left {
-            min-height: 0;
+            min-width: 0;
         }
 
         .board-holder {
             width: 100%;
-            max-width: min(100%, 85vh);
+            max-width: min(85vh, 100%);
             margin: 0 auto;
-        }
-
-        #move-history {
-            background: rgba(0,0,0,0.2);
-            color: #d1c5e0;
         }
     </style>
 </head>
 <body>
-<div class="game-root flex flex-col lg:flex-row">
-    <div class="flex-1 flex flex-col justify-center p-2 lg:p-4 shell-left">
+<div class="game-root">
+    <div class="flex-1 flex flex-col justify-center p-2 lg:p-4 overflow-hidden shell-left">
         <div class="board-holder space-y-2 lg:space-y-3">
             <div class="flex justify-between items-center px-2">
                 <div class="flex items-center gap-3 min-w-0">
-                    <div class="w-10 h-10 bg-black rounded flex items-center justify-center overflow-hidden border border-[var(--line)] shrink-0 shadow-lg">
-                        <img src="https://images.chesscomfiles.com/chess-themes/pieces/neo/150/bp.png" class="w-8 h-8 object-contain drop-shadow" id="opp-avatar">
+                    <div class="w-10 h-10 bg-[#1f1e1b] rounded flex items-center justify-center overflow-hidden border border-[#3f3e3b] shrink-0">
+                        <img src="https://images.chesscomfiles.com/chess-themes/pieces/neo/150/bp.png" class="w-8 h-8 object-contain" id="opp-avatar">
                     </div>
                     <div class="min-w-0">
                         <div class="font-bold text-sm tracking-wide truncate" id="opp-name">Opponent</div>
                         <div class="flex items-center mt-0.5 min-h-[18px] flex-wrap gap-1" id="captured-top"></div>
                     </div>
                 </div>
-                <div class="text-xs font-mono font-bold bg-[var(--panel)] text-[var(--muted)] px-3 py-2 rounded shrink-0 shadow border border-[var(--line)]" id="opp-status">Waiting</div>
+                <div class="text-xs font-mono font-bold bg-[#1f1e1b] text-muted px-3 py-2 rounded shrink-0" id="opp-status">Waiting</div>
             </div>
 
             <div class="board-shell" id="board-shell">
                 <div id="board" class="w-full h-full grid grid-cols-8 grid-rows-8 select-none"></div>
 
                 <div id="waiting-overlay" class="overlay">
-                    <div class="bg-[var(--panel)] border border-[var(--line)] p-6 rounded-2xl text-center max-w-[92%] shadow-2xl w-[420px]">
+                    <div class="bg-[#262421] border border-[#3f3e3b] p-6 rounded-2xl text-center max-w-[92%] shadow-2xl w-[420px]">
                         <div id="lobby-content">
                             <h2 class="text-xl font-bold mb-2 text-white">
-                                <i class="fa-solid fa-chess-knight text-[var(--green)] mr-2"></i>Match Lobby
+                                <i class="fa-solid fa-chess-knight text-[#81b64c] mr-2"></i>Match Lobby
                             </h2>
-                            <p class="text-sm text-[var(--muted)] mb-4">Enter your name and join the arena.</p>
-                            <div class="flex gap-2 mb-3">
-                                <input type="text" id="name-input" maxlength="24" placeholder="Your name"
-                                       class="w-full bg-[var(--bg)] border border-[var(--line)] text-white p-3 rounded-lg text-sm focus:outline-none focus:border-[var(--green)]">
+                            <p class="text-sm text-muted mb-4">Enter a Room Code to join your friend, or leave it blank to create a new match.</p>
+                            
+                            <div class="flex flex-col gap-3 mb-4 text-left">
+                                <div>
+                                    <label class="block text-[10px] font-bold text-muted uppercase tracking-wider mb-1 px-1">Your Name</label>
+                                    <input type="text" id="name-input" maxlength="24" placeholder="Player"
+                                           class="w-full bg-[#141312] border border-[#3f3e3b] text-white p-3 rounded-lg text-sm focus:outline-none focus:border-[#81b64c]">
+                                </div>
+                                
+                                <div>
+                                    <label class="block text-[10px] font-bold text-muted uppercase tracking-wider mb-1 px-1">Room Code</label>
+                                    <div class="relative">
+                                        <input type="text" id="room-input" maxlength="8" placeholder="e.g. A1B2C3"
+                                               class="w-full bg-[#141312] border border-[#3f3e3b] text-white p-3 rounded-lg text-sm uppercase focus:outline-none focus:border-[#81b64c] font-mono tracking-widest">
+                                        <span class="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-muted uppercase tracking-wider hidden sm:block">Leave blank to create</span>
+                                    </div>
+                                </div>
                             </div>
-                            <button id="join-btn" class="w-full bg-[var(--green)] text-white font-extrabold px-4 py-3 rounded-lg text-sm transition hover:bg-[#a3d160] shadow-lg uppercase tracking-wider">
-                                Join Match
+                            
+                            <button id="join-btn" class="w-full bg-[#81b64c] hover:bg-[#a3d160] text-black font-extrabold px-4 py-3 rounded-lg text-sm transition mt-2 shadow-lg">
+                                Join / Create Match
                             </button>
                         </div>
                     </div>
                 </div>
 
                 <div id="game-over-overlay" class="overlay hidden">
-                    <div class="bg-[var(--panel)] border border-[var(--line)] p-6 rounded-2xl text-center max-w-[92%] shadow-2xl w-[420px]">
+                    <div class="bg-[#262421] border border-[#3f3e3b] p-6 rounded-2xl text-center max-w-[92%] shadow-2xl w-[420px]">
                         <h2 class="text-xl font-bold mb-2 text-white"><i class="fa-solid fa-flag text-red-400 mr-2"></i>Game Over</h2>
-                        <p id="game-over-text" class="text-sm text-[var(--muted)] mb-4">The game has ended.</p>
-                        <button onclick="window.location.reload()" class="bg-[var(--green)] hover:bg-[#a3d160] text-white font-extrabold px-4 py-3 rounded-lg text-sm transition w-full shadow-lg uppercase tracking-wider">Play Again</button>
+                        <p id="game-over-text" class="text-sm text-muted mb-4">The game has ended.</p>
+                        <button onclick="window.location.reload()" class="bg-[#81b64c] hover:bg-[#a3d160] text-black font-extrabold px-4 py-3 rounded-lg text-sm transition w-full">Play Again</button>
                     </div>
                 </div>
             </div>
 
             <div class="flex justify-between items-center px-2">
                 <div class="flex items-center gap-3 min-w-0">
-                    <div class="w-10 h-10 bg-black rounded flex items-center justify-center overflow-hidden border border-[var(--line)] shrink-0 shadow-lg">
-                        <img src="https://images.chesscomfiles.com/chess-themes/pieces/neo/150/wp.png" class="w-8 h-8 object-contain drop-shadow" id="my-avatar">
+                    <div class="w-10 h-10 bg-[#1f1e1b] rounded flex items-center justify-center overflow-hidden border border-[#3f3e3b] shrink-0">
+                        <img src="https://images.chesscomfiles.com/chess-themes/pieces/neo/150/wp.png" class="w-8 h-8 object-contain" id="my-avatar">
                     </div>
                     <div class="min-w-0">
                         <div class="font-bold text-sm tracking-wide truncate" id="my-name">You</div>
                         <div class="flex items-center mt-0.5 min-h-[18px] flex-wrap gap-1" id="captured-bottom"></div>
                     </div>
                 </div>
-                <div class="text-xs font-mono font-bold bg-[var(--green)] text-white px-3 py-2 rounded shrink-0 shadow-lg" id="my-status">Thinking</div>
+                <div class="text-xs font-mono font-bold bg-[#81b64c] text-black px-3 py-2 rounded shrink-0" id="my-status">Thinking</div>
             </div>
         </div>
     </div>
 
-    <!-- Responsive Grimoire Panel for scrolling -->
-    <div class="w-full lg:w-[420px] xl:w-[460px] grimoire-container flex flex-col z-10 lg:h-screen lg:overflow-y-auto lg:sticky top-0 pb-6 lg:pb-0">
-        <div class="p-5 border-b border-[var(--line)] bg-[var(--panel)] sticky top-0 z-20 flex justify-between items-center shadow-md">
-            <h3 class="font-bold text-sm text-white uppercase tracking-widest flex items-center" style="font-family: 'Cinzel', serif;">
-                <i class="fa-solid fa-book-journal-whills mr-2 text-[var(--green)]"></i>The Grimoire
-            </h3>
-            <div id="turn-indicator" class="text-[10px] font-bold px-2 py-1 rounded bg-[var(--bg)] text-[var(--muted)] border border-[var(--line)]">WAITING</div>
-        </div>
-        
-        <div id="spells-container" class="grid grid-cols-2 gap-3 p-4">
-            <!-- Spells injected here via JS -->
+    <div class="w-full lg:w-[380px] xl:w-[420px] bg-[#262421] border-l border-[#3f3e3b] flex flex-col h-[40vh] lg:h-full z-10 shadow-2xl flex-shrink-0">
+        <div class="p-4 border-b border-[#3f3e3b] bg-[#211f1c]">
+            <div class="flex justify-between items-center mb-3">
+                <h3 class="font-bold text-xs text-muted uppercase tracking-widest">
+                    <i class="fa-solid fa-book-journal-whills mr-2 text-[#8b5cf6]"></i>Your Grimoire
+                </h3>
+                <span id="turn-indicator" class="text-[10px] font-bold px-2 py-1 rounded bg-[#1f1e1b] text-muted border border-[#3f3e3b]">WAITING</span>
+            </div>
+            <div id="spells-container" class="flex lg:grid lg:grid-cols-3 gap-2 overflow-x-auto lg:overflow-y-auto lg:max-h-[220px] pb-2 lg:pb-0 pr-1 snap-x">
+            </div>
         </div>
 
-        <div class="px-5 py-3 mt-auto border-t border-[var(--line)] flex justify-between items-center bg-[var(--panel)]">
-            <span class="font-bold text-xs text-[var(--muted)] uppercase tracking-widest"><i class="fa-solid fa-list-ul mr-2"></i>Match Log</span>
+        <div class="px-4 py-3 border-b border-[#3f3e3b] flex justify-between items-center bg-[#262421]">
+            <span class="font-bold text-xs text-muted uppercase tracking-widest"><i class="fa-solid fa-list-ul mr-2"></i>Match Log</span>
             <button id="resign-btn" class="text-xs text-red-400 hover:text-red-300 transition font-bold">
                 <i class="fa-solid fa-flag mr-1"></i>Resign
             </button>
         </div>
-        <div class="flex-grow max-h-[250px] lg:max-h-[none] overflow-y-auto p-4 font-mono text-sm shadow-inner" id="move-history"></div>
+        <div class="flex-grow overflow-y-auto p-4 bg-[#1f1e1b] font-mono text-sm shadow-inner" id="move-history"></div>
     </div>
 </div>
 
@@ -566,14 +529,15 @@ if (!playerId) {
     localStorage.setItem("wizard_chess_id", playerId);
 }
 
-const room = (() => {
+// Global room ID
+let room = (() => {
     const params = new URLSearchParams(location.search);
     let r = params.get("room");
     if (!r) {
-        r = Math.random().toString(36).slice(2, 9);
+        r = Math.random().toString(36).slice(2, 8).toUpperCase();
         history.replaceState({}, "", `${location.pathname}?room=${r}`);
     }
-    return r;
+    return r.toUpperCase();
 })();
 
 const game = new Chess();
@@ -642,15 +606,15 @@ function isMyTurn() {
 function setMoveLogFromSan(text, color, isSpell = false) {
     const history = document.getElementById("move-history");
     const safeText = (text || "").toString();
-    const style = isSpell ? "text-[var(--green)] font-bold" : "text-[#e3e3e3]";
-    const icon = isSpell ? '<i class="fa-solid fa-wand-magic-sparkles text-[10px] mr-1 text-[var(--green)]"></i>' : "";
+    const style = isSpell ? "text-purple-300 font-bold" : "text-[#e3e3e3]";
+    const icon = isSpell ? '<i class="fa-solid fa-wand-magic-sparkles text-[10px] mr-1 text-purple-300"></i>' : "";
 
     if (color === "w") {
         history.insertAdjacentHTML("beforeend", `
-            <div class="flex py-1.5 border-b border-[var(--line)]">
-                <div class="w-8 text-[var(--muted)]">${moveNum}.</div>
+            <div class="flex py-1.5 border-b border-[#3f3e3b]">
+                <div class="w-8 text-muted">${moveNum}.</div>
                 <div class="w-1/2 ${style}">${icon}${safeText}</div>
-                <div class="w-1/2 text-right text-[var(--muted)]" id="black-move-${moveNum}">...</div>
+                <div class="w-1/2 text-right text-muted" id="black-move-${moveNum}">...</div>
             </div>
         `);
     } else {
@@ -661,8 +625,8 @@ function setMoveLogFromSan(text, color, isSpell = false) {
             el.classList.add("text-left");
         } else {
             history.insertAdjacentHTML("beforeend", `
-                <div class="flex py-1.5 border-b border-[var(--line)]">
-                    <div class="w-8 text-[var(--muted)]">${moveNum}.</div>
+                <div class="flex py-1.5 border-b border-[#3f3e3b]">
+                    <div class="w-8 text-muted">${moveNum}.</div>
                     <div class="w-1/2"></div>
                     <div class="w-1/2 ${style}">${icon}${safeText}</div>
                 </div>
@@ -705,8 +669,8 @@ function calcMaterial() {
     const bottomAdv = wScore > bScore ? (myColor === "w" ? wScore - bScore : "") : (bScore > wScore ? (myColor === "b" ? bScore - wScore : "") : "");
     const topAdv = wScore > bScore ? (myColor === "b" ? wScore - bScore : "") : (bScore > wScore ? (myColor === "w" ? bScore - wScore : "") : "");
 
-    document.getElementById("captured-bottom").innerHTML = (myColor === "w" ? capW : capB) + (bottomAdv ? `<span class="text-xs text-[var(--muted)] ml-1 font-bold">+${bottomAdv}</span>` : "");
-    document.getElementById("captured-top").innerHTML = (myColor === "w" ? capB : capW) + (topAdv ? `<span class="text-xs text-[var(--muted)] ml-1 font-bold">+${topAdv}</span>` : "");
+    document.getElementById("captured-bottom").innerHTML = (myColor === "w" ? capW : capB) + (bottomAdv ? `<span class="text-xs text-muted ml-1 font-bold">+${bottomAdv}</span>` : "");
+    document.getElementById("captured-top").innerHTML = (myColor === "w" ? capB : capW) + (topAdv ? `<span class="text-xs text-muted ml-1 font-bold">+${topAdv}</span>` : "");
 }
 
 function updateUI() {
@@ -760,19 +724,17 @@ function updateUI() {
     if (gameReady) {
         if (activeSpell) {
             turnIndicator.innerText = `TARGET: ${activeSpell.name.toUpperCase()}`;
-            turnIndicator.className = "text-[10px] font-bold px-2 py-1 rounded shadow bg-[var(--green)] text-white animate-pulse cursor-pointer";
-            turnIndicator.onclick = cancelSpell;
+            turnIndicator.className = "text-[10px] font-bold px-2 py-1 rounded shadow bg-[#8b5cf6] text-white animate-pulse cursor-pointer";
         } else {
             turnIndicator.innerText = isMy ? "YOUR TURN" : "OPPONENT'S TURN";
-            turnIndicator.className = `text-[10px] font-bold px-2 py-1 rounded shadow border ${isMy ? "bg-[var(--green)] text-white border-transparent" : "bg-[var(--bg)] text-[var(--muted)] border-[var(--line)]"}`;
-            turnIndicator.onclick = null;
+            turnIndicator.className = `text-[10px] font-bold px-2 py-1 rounded shadow ${isMy ? "bg-[#81b64c] text-black border border-transparent" : "bg-[#1f1e1b] text-muted border border-[#3f3e3b]"}`;
         }
         
         myStatus.innerText = isMy ? "Thinking" : "Waiting";
-        myStatus.className = `text-xs font-mono font-bold px-3 py-2 rounded shadow-lg ${isMy ? "bg-[var(--green)] text-white" : "bg-[var(--bg)] text-[var(--muted)] border border-[var(--line)]"}`;
+        myStatus.className = `text-xs font-mono font-bold px-3 py-2 rounded shadow ${isMy ? "bg-[#81b64c] text-black" : "bg-[#1f1e1b] text-muted border border-[#3f3e3b]"}`;
         
         oppStatus.innerText = !isMy ? "Thinking" : "Waiting";
-        oppStatus.className = `text-xs font-mono font-bold px-3 py-2 rounded shadow border ${!isMy ? "bg-[var(--green)] text-white border-transparent" : "bg-[var(--bg)] text-[var(--muted)] border-[var(--line)]"}`;
+        oppStatus.className = `text-xs font-mono font-bold px-3 py-2 rounded shadow ${!isMy ? "bg-[#81b64c] text-black" : "bg-[#1f1e1b] text-muted border border-[#3f3e3b]"}`;
     }
 
     const handContainer = document.getElementById("spells-container");
@@ -784,21 +746,19 @@ function updateUI() {
             const isActive = activeSpell && activeSpell.id === spell.id;
 
             const card = document.createElement("div");
-            card.className = `spell-card p-3 lg:p-4 flex flex-col items-center justify-start ${isUsed ? "used" : ""} ${isActive ? "active" : ""} ${!isUsed && gameReady && game.turn() === myColor ? "cursor-pointer" : ""}`;
-            card.style.setProperty("--spell-color", spell.color);
-            card.style.setProperty("--spell-glow", spell.color + "55");
+            card.className = `spell-card min-w-[102px] lg:w-auto p-3 rounded-xl border text-center flex flex-col items-center justify-center snap-center shrink-0 ${isUsed ? "used" : ""} ${isActive ? "active" : ""} ${!isUsed && gameReady && game.turn() === myColor ? "cursor-pointer" : ""}`;
+            card.style.borderColor = spell.color;
+            card.style.boxShadow = `inset 0 0 0 1px ${spell.color}33, 0 8px 22px rgba(0,0,0,0.25)`;
+            card.style.background = `linear-gradient(180deg, ${spell.color}20, #161513 55%)`;
 
             card.innerHTML = `
-                <div class="w-12 h-12 lg:w-16 lg:h-16 mb-2 lg:mb-3 relative drop-shadow-[0_0_6px_${spell.color}99]">
-                    ${spell.image}
-                </div>
-                <div class="text-[11px] lg:text-[13px] font-black tracking-wider uppercase mb-1 text-white text-center shadow-black drop-shadow-md border-b pb-1 w-full" style="border-color:${spell.color}88; font-family: 'Cinzel', serif;">${spell.name}</div>
-                <div class="text-[9px] lg:text-[10px] text-[var(--muted)] leading-snug text-center px-1 mt-1 font-medium">${spell.desc}</div>
+                <div class="text-2xl mb-1 drop-shadow-md" style="color:${spell.color}"><i class="fa-solid ${spell.icon}"></i></div>
+                <div class="text-[10px] font-extrabold leading-tight mb-1 text-white tracking-wide">${spell.name}</div>
+                <div class="text-[9px] text-muted leading-tight hidden lg:block">${spell.desc}</div>
             `;
 
             card.onclick = () => {
                 if (isUsed || !gameReady || game.turn() !== myColor) return;
-                
                 if (isActive) {
                     cancelSpell();
                     return;
@@ -811,6 +771,7 @@ function updateUI() {
                         player_id: playerId,
                         spell_id: spell.id,
                         fen: game.fen(),
+                        consume_turn: spell.id !== "expelliarmus",
                         log: spell.name.toUpperCase()
                     });
                     cancelSpell();
@@ -858,19 +819,12 @@ function handleSquareClick(sq) {
         const temp = new Chess(game.fen());
         const move = temp.move({ from: selectedSquare, to: sq, promotion: "q" });
         if (move) {
-            const san = move.san;
-            
-            game.move({ from: selectedSquare, to: sq, promotion: "q" });
-            if (san.includes("x")) sounds.capture.play().catch(()=>{});
-            else sounds.move.play().catch(()=>{});
-            setMoveLogFromSan(san, myColor, false);
-            
             socket.emit("standard_move", {
                 room,
                 player_id: playerId,
                 from: move.from,
                 to: move.to,
-                san: san,
+                san: move.san,
                 fen: temp.fen()
             });
         }
@@ -897,7 +851,7 @@ function processSpellClick(sq) {
                 nextFen = temp.fen();
             }
             break;
-            
+
         case "bombarda":
             const fileIdxB = sq.charCodeAt(0);
             const rankIdxB = parseInt(sq[1], 10);
@@ -997,6 +951,7 @@ function processSpellClick(sq) {
             player_id: playerId,
             spell_id: activeSpell.id,
             fen: nextFen,
+            consume_turn: activeSpell.id !== "expelliarmus",
             log: logText
         });
         cancelSpell();
@@ -1017,61 +972,76 @@ document.getElementById("resign-btn").onclick = () => {
 
 function joinGame() {
     const nameInput = document.getElementById("name-input");
+    const roomInput = document.getElementById("room-input");
+    
     const name = (nameInput.value || "").trim().slice(0, 24);
     if (!name) {
         nameInput.focus();
         return;
     }
+
+    // Override the auto-generated room if user types one in manually
+    const typedRoom = (roomInput.value || "").trim().toUpperCase();
+    if (typedRoom) {
+        room = typedRoom;
+        history.replaceState({}, "", `${location.pathname}?room=${room}`);
+    }
+
     playerName = name;
     localStorage.setItem("wizard_chess_name", playerName);
     pendingJoin = true;
     socket.emit("join_room", { room, player_id: playerId, player_name: playerName });
 
-    // Instantly update UI to waiting state
-    document.getElementById("lobby-content").innerHTML = `
-        <div class="py-4">
-            <div class="inline-block mb-4">
-                <svg class="animate-spin h-10 w-10 text-[var(--green)] mx-auto" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                </svg>
-            </div>
-            <h2 class="text-xl font-bold mb-2 text-white">Waiting for Opponent...</h2>
-            <p class="text-sm text-[var(--muted)]">Send this link to a friend to begin.</p>
-            <div class="flex gap-2 mt-5 max-w-[300px] mx-auto">
-                <input type="text" id="share-link-waiting" readonly value="${location.href}" class="w-full bg-[var(--bg)] border border-[var(--line)] text-[var(--muted)] p-2 rounded-lg text-xs font-mono focus:outline-none">
-                <button onclick="copyWaitingLink()" class="bg-[var(--green)] hover:bg-[#a3d160] text-white font-extrabold px-3 rounded-lg text-sm transition shadow-lg">
-                    <i class="fa-solid fa-copy"></i>
+    // Show waiting screen with Room Code specifically for the iPad/friend to type
+    const lobbyContent = document.getElementById("lobby-content");
+    if(lobbyContent) {
+        lobbyContent.innerHTML = `
+            <div class="py-4">
+                <div class="inline-block mb-4">
+                    <svg class="animate-spin h-10 w-10 text-[#81b64c] mx-auto" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                </div>
+                <h2 class="text-xl font-bold mb-2 text-white">Waiting for Opponent...</h2>
+                <p class="text-sm text-muted mb-4">Tell your friend to enter this Room Code:</p>
+                <div class="text-4xl font-mono text-[#81b64c] font-black tracking-widest bg-[#141312] py-4 rounded-lg border border-[#3f3e3b] mb-4 shadow-inner">${room}</div>
+                <button onclick="copyWaitingLink()" class="w-full bg-[#3f3e3b] hover:bg-[#4a4555] text-white font-extrabold px-3 py-2 rounded-lg text-sm transition shadow-lg mt-2">
+                    <i class="fa-solid fa-copy mr-2"></i>Copy Link Anyway
                 </button>
+                <input type="hidden" id="share-link-waiting" value="${location.href}">
             </div>
-        </div>
-    `;
+        `;
+    }
 }
 
 window.copyWaitingLink = async () => {
     const input = document.getElementById("share-link-waiting");
+    if(!input) return;
+    input.type = "text"; 
     input.select();
     try { await navigator.clipboard.writeText(input.value); } catch (e) {}
+    input.type = "hidden";
 }
 
-document.getElementById("join-btn")?.addEventListener("click", joinGame);
-document.getElementById("name-input")?.addEventListener("keydown", (e) => {
+document.getElementById("join-btn").onclick = joinGame;
+document.getElementById("name-input").addEventListener("keydown", (e) => {
     if (e.key === "Enter") joinGame();
 });
+if(document.getElementById("room-input")) {
+    document.getElementById("room-input").addEventListener("keydown", (e) => {
+        if (e.key === "Enter") joinGame();
+    });
+}
 
 socket.on("connect", () => {
-    if(document.getElementById("share-link")) {
-        document.getElementById("share-link").value = location.href;
-        
-        document.getElementById("copy-btn").onclick = async () => {
-            const input = document.getElementById("share-link");
-            input.select();
-            try { await navigator.clipboard.writeText(input.value); } catch (e) {}
-        };
-    }
     const saved = localStorage.getItem("wizard_chess_name");
-    if (saved && document.getElementById("name-input")) {
+    if (saved) {
         document.getElementById("name-input").value = saved;
+    }
+    const rInput = document.getElementById("room-input");
+    if (rInput && room) {
+        rInput.value = room;
     }
     if (!pendingJoin) {
         document.getElementById("waiting-overlay").style.display = "flex";
@@ -1122,50 +1092,31 @@ socket.on("room_state", (state) => {
     updateUI();
 });
 
-socket.on("sync_spells", (data) => {
-    if (myColor && data.used[myColor]) {
-        usedSpells = new Set(data.used[myColor]);
-        updateUI();
-    }
-});
-
 socket.on("board_update", (data) => {
-    const isMyNormalMove = (data.color === myColor && !data.is_spell);
+    if (data.fen) {
+        game.load(data.fen);
+    }
 
-    if (!isMyNormalMove) {
-        if (data.fen) game.load(data.fen);
-        
-        updateUI(); 
-
-        requestAnimationFrame(() => {
-            setTimeout(() => {
-                if (data.is_spell) {
-                    sounds.spell.play().catch(() => {});
-                } else {
-                    if ((data.san || "").includes("x")) sounds.capture.play().catch(() => {});
-                    else sounds.move.play().catch(() => {});
-                }
-            }, 30);
-        });
-        
-        if (data.san) {
-            setMoveLogFromSan(data.san, data.color, !!data.is_spell);
+    if (data.is_spell) {
+        sounds.spell.play().catch(() => {});
+        if (data.color === myColor && data.used_spell_id) {
+            usedSpells.add(data.used_spell_id);
         }
     } else {
-        if (data.fen && game.fen() !== data.fen) {
-            game.load(data.fen);
-        }
-        updateUI();
+        if ((data.san || "").includes("x")) sounds.capture.play().catch(() => {});
+        else sounds.move.play().catch(() => {});
     }
 
-    if (data.is_spell && data.color === myColor && data.used_spell_id) {
-        usedSpells.add(data.used_spell_id);
+    if (data.san) {
+        setMoveLogFromSan(data.san, data.color, !!data.is_spell);
     }
 
     if (data.room_state && data.room_state.started) {
         document.getElementById("waiting-overlay").style.display = "none";
         gameReady = true;
     }
+
+    updateUI();
 });
 
 socket.on("game_over", (data) => {
@@ -1181,10 +1132,6 @@ socket.on("game_over", (data) => {
 buildBoardDOM();
 updateUI();
 
-if (playerName) {
-    const nInput = document.getElementById("name-input");
-    if(nInput) nInput.value = playerName;
-}
 </script>
 </body>
 </html>
